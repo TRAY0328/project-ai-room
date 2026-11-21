@@ -12,6 +12,7 @@ import { filterAgentProfilePatch } from "@ai-room/permissions";
 import { explainProviderState, REQUIRED_ROSTER, buildProviderRegistry } from "@ai-room/provider-adapters";
 import type { Handler } from "../domain.js";
 import { blocked, ensureMainRoom, isEmergencyStopped, notFoundOrHidden, optionalString } from "../domain.js";
+import { readCookie, REFRESH_COOKIE, SESSION_COOKIE } from "../http.js";
 
 const registry = buildProviderRegistry();
 
@@ -108,8 +109,12 @@ export const identityHandlers: Record<string, Handler> = {
   },
 
   "post-auth-logout": async (ctx) => {
-    const bearer = ctx.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
-    const result = await ctx.auth.logout(bearer, optionalString(ctx.body, "refresh_token") ?? undefined, ctx.requestId);
+    // A browser has no bearer to send: the session lives in the HttpOnly cookie,
+    // so logout reads the same cookie a normal request is authenticated with.
+    const authorization = ctx.headers.get("authorization") ?? "";
+    const bearer = authorization.replace(/^Bearer\s+/i, "").trim() || readCookie(ctx.headers.get("cookie"), SESSION_COOKIE) || undefined;
+    const refresh = optionalString(ctx.body, "refresh_token") ?? readCookie(ctx.headers.get("cookie"), REFRESH_COOKIE) ?? undefined;
+    const result = await ctx.auth.logout(bearer, refresh, ctx.requestId);
     return { status: 200, data: result };
   },
 
