@@ -1,0 +1,18 @@
+# gitleaks 설정 — 기본 규칙 전체를 쓰고, 테스트 픽스처 경로만 허용 목록에 넣는다.
+
+# 기본 규칙은 그대로 사용한다(실제 키 패턴 탐지는 약화하지 않는다).
+[extend]
+useDefault = true
+
+# 테스트는 "키처럼 생긴 문자열"로 탐지·마스킹 로직을 검증한다.
+# 예: redactSecrets("token ghp_aaaa…"), scanChangeForSecrets("sk-…"),
+#     WS_TICKET_SIGNING_KEY: "<테스트 값>", idempotencyKey: "<테스트 값>".
+# 이 경로를 제외하지 않으면 정상적인 보안 테스트가 비밀 유출로 오탐된다.
+# 제외 범위는 테스트 디렉터리로 한정하며, 서비스·앱 코드는 그대로 검사한다.
+[[allowlists]]
+description = "test fixtures contain fake key-shaped literals"
+paths = [
+  '''^tests/''',
+  '''/tests/''',
+  '''^packages/[^/]+/test/''',
+]
