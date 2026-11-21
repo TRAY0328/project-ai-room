@@ -114,6 +114,10 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
     enqueueMessage(roomId, blocks);
     if (connection.state === "ready") {
       await flushOutbox();
+      // The queued copy leaves the list the moment the server accepts it, so the
+      // stored message is fetched again immediately — otherwise the message the
+      // user just sent disappears until the next poll.
+      messagesRes.reload();
       setToast("전송 요청됨 — 서버 확인 결과는 메시지 상태로 표시됩니다");
     } else {
       setToast("오프라인: 보관함에 저장했습니다 (서버 저장 아님)");
@@ -259,7 +263,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
       </div>
 
       {toast ? (
-        <div style={{ position: "fixed", bottom: 16, right: 16, zIndex: 60 }} className="air-toast" role="status">
+        <div className="air-toast air-toast-float" role="status">
           <Icon name="info" size={13} />
           <span style={{ flex: 1 }}>{toast}</span>
           <IconButton icon="close" label="닫기" onClick={() => setToast(null)} />
