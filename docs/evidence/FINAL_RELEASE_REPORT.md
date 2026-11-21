@@ -7,13 +7,13 @@
 - Report date/time UTC: **2026-11-21T05:55Z** (KST 14:55)
 - Requested completion status: **`NOT_RELEASE_READY`** (G-01..G-12 PASS 전에는 변경 금지)
 - 이번 단계 성격: 웹·Windows·Android 앱과 게이트웨이를 **Cloudflare에 실제 배포**하고, GitHub Actions 5종을 **모두 통과**시켜 EXE·설치파일·APK·웹 빌드를 산출했다.
-- Git commit SHA: **`cf00dd884e39095986655b392f156db9075d2d89`** (원격 `main`, CI 5/5 success)
+- Git commit SHA: **`fc922169d7711cbeb38303d3dc48db63a605043c`** (원격 `main` HEAD, CI 5/5 success)
 - Cloudflare deployment/environment: **DEPLOYED (staging)** — `https://project-ai-room.playtray0328.workers.dev`, Worker `project-ai-room`, 버전 `3bb6682c-ee36-4dae-967c-36f13bccfcf6`
 - GitHub repository: `https://github.com/TRAY0328/project-ai-room` (**PUBLIC — 사용자 명시 승인**). 코드·문서는 이 저장소가 단일 진본이다.
 - Source code archive and SHA-256: **NOT_PRODUCED** (git 커밋으로 관리, 별도 아카이브 없음)
-- Web build SHA-256 / test URL: `index.html` `c11a67b2…65e536` · `ai-portal.txt`= `llms.txt` `593f41ea…26ae66` · 12개 파일 · https://project-ai-room.playtray0328.workers.dev/
-- Windows EXE + installer SHA-256 / install test: `AI ROOM.exe` `d76a019b…efe89a0` (4,820,992B) · NSIS `de3fbaa8…507cff5` (1,873,186B) · MSI `416c4f8b…50919ff9` (2,510,848B) · **미서명, 실제 기기 설치·실행 시험 미실시**
-- Android APK SHA-256 / device install test: CI debug `ce281f78…6077d0d8` (9,146,029B) · release **미생성(서명 키 없음)** · **실기기 설치 미실시**
+- Web build SHA-256 / test URL: `index.html` `c11a67b2…65e536` · `ai-portal.txt`= `llms.txt` `593f41ea…26ae66` · 12개 파일 · https://project-ai-room.playtray0328.workers.dev/ (웹 빌드는 결정적: 재빌드해도 해시 동일)
+- Windows EXE + installer SHA-256 / install test: run `44872798579` — `AI ROOM.exe` `7e600b0d…0b695a58e` (4,820,992B) · NSIS `261958de…92aaf0f8` (1,873,114B) · MSI `0eae8242…2bb23343` (2,510,848B) · **미서명, 실제 기기 설치·실행 시험 미실시** (재빌드 시 바이트 달라짐)
+- Android APK SHA-256 / device install test: run `44872798638` — debug `d254707b…95b60de0f` (9,146,029B) · release **미생성(서명 키 없음)** · **실기기 설치 미실시**
 
 ## 이번 단계 실제 산출물
 
@@ -22,8 +22,8 @@
 | 웹 클라이언트 빌드 | `apps/web/dist` (12개 파일, 4.5MB) | vite 프로덕션 빌드, `llms.txt`·`ai-portal.txt` 포함, CI 아티팩트와 동일 해시 |
 | Cloudflare Worker | `project-ai-room` (workers.dev) | 라이브 200/401 응답 실측(`live/live-probe-20261121T050232Z.txt`) |
 | D1 스키마 | `ai-room-db` `483c3df3-…eeb3` | `0001_initial.sql` 원격 적용, 테이블 97 · 트리거 26 · 인덱스 151 |
-| Windows 산출물 | CI `44871990877` | `AI ROOM.exe` + NSIS 설치프로그램 + MSI, SHA-256 기록([`ci-runs.md`](ci-runs.md)) |
-| Android APK | CI `44871990867` | debug APK 9,146,029B, SHA-256 기록 |
+| Windows 산출물 | CI `44872798579` | `AI ROOM.exe` + NSIS 설치프로그램 + MSI, SHA-256 기록([`ci-runs.md`](ci-runs.md)) |
+| Android APK | CI `44872798638` | debug APK 9,146,029B, SHA-256 기록 |
 | 로컬 검증 | `npm run verify` | typecheck + 계약 78 + 테스트 83/83 PASS |
 | 웹 테스트 | `apps/web` vitest | 80/80 PASS (1회차에서 1건 flaky 실패 후 재실행 통과) |
 | 보안 테스트 | `tests/security/*` | PASS, 금지패턴 스캔 clean, GPL계열 라이선스 0건 |
@@ -80,8 +80,9 @@ T-AI-01~08 시험: **0건 수행**. 키·계정이 없으므로 "수행 불가"�
 ## CI results, security findings, backup restore, known blockers, operator handoff
 
 ### CI 결과
-- 원격 Actions **5/5 success** — 커밋 `cf00dd884e39095986655b392f156db9075d2d89`:
-  verify `44871990981` · build-web `44871990894` · build-android `44871990867` · build-windows `44871990877` · security `44871990908`
+- 원격 Actions **5/5 success** — 커밋 `fc922169d7711cbeb38303d3dc48db63a605043c`:
+  verify `44872798593` · build-web `44872798632` · build-android `44872798638` · build-windows `44872798579` · security `44872798661`
+- 직전 코드 커밋 `cf00dd8`에서도 5/5 success(verify `44871990981`, build-web `44871990894`, build-android `44871990867`, build-windows `44871990877`, security `44871990908`).
 - 실패에서 통과까지 고친 원인 5건은 [`ci-runs.md`](ci-runs.md) 표에 남겼다: 로컬 전용 스펙 경로, gitleaks 오탐, `npm sbom` 전 `npm ci` 누락, rustc E0597, 카고 산출물 파일명 불일치.
 - Actions 무료 한도: 저장소가 **PUBLIC**이라 표준 러너 분당 과금이 없다.
 - 남은 CI 공백: PR 생성·리뷰·검증 병합 경로는 실제로 돌리지 않았고(푸시 직행), 이는 G-04를 PARTIAL로 둔다.
@@ -111,9 +112,9 @@ T-AI-01~08 시험: **0건 수행**. 키·계정이 없으므로 "수행 불가"�
 
 ## 해시·증거
 
-- 웹 빌드(CI `44871990894`): `dist/` 12개 파일, `index.html` `c11a67b2`…`65e536`, `ai-portal.txt` = `llms.txt` `593f41ea`…`26ae66` (로컬 빌드와 동일 해시)
-- Windows(CI `44871990877`): `AI ROOM.exe` `d76a019b`…`efe89a0` · `AI ROOM_0.1.0_x64-setup.exe` `de3fbaa8`…`507cff5` · `AI ROOM_0.1.0_x64_en-US.msi` `416c4f8b`…`50919ff9`
-- Android(CI `44871990867`): `app-debug.apk` `ce281f78`…`6077d0d8`
+- 웹 빌드(CI `44872798632`): `dist/` 12개 파일, `index.html` `c11a67b2`…`65e536`, `ai-portal.txt` = `llms.txt` `593f41ea`…`26ae66` (로컬 빌드와 동일 해시)
+- Windows(CI `44872798579`): `AI ROOM.exe` `7e600b0d`…`0b695a58e` · `AI ROOM_0.1.0_x64-setup.exe` `261958de`…`92aaf0f8` · `AI ROOM_0.1.0_x64_en-US.msi` `0eae8242`…`2bb23343`
+- Android(CI `44872798638`): `app-debug.apk` `d254707b`…`95b60de0f`
 - 마이그레이션: `db/migrations/0001_initial.sql` — 원격 적용 2026-11-21T04:53:08Z, 157개 명령, 테이블 97·트리거 26·인덱스 151
 - 증거 원장: [`release-evidence.json`](release-evidence.json) (G-03~G-11) · CI 상세: [`ci-runs.md`](ci-runs.md) · 배포 상세: [`deployment-live.md`](deployment-live.md)
 - 계약 버전: `2026-11-21.1` (엔드포인트 78, 오류코드 26, 이벤트 45, 권한 액션 57, 작업 상태 18)

@@ -1,49 +1,46 @@
 # GitHub Actions 실행 기록 (실측)
 
 - 저장소: `https://github.com/TRAY0328/project-ai-room` (PUBLIC)
-- 기록 시각: 2026-11-21T05:50Z (KST 14:50)
-- 기준 커밋: `cf00dd884e39095986655b392f156db9075d2d89` (`cf00dd8`)
-- 아티팩트는 `gh run download <run-id>`로 내려받아 `SHA256SUMS.txt`·`build-info.json`과 함께 대조했다.
+- 기록 시각: 2026-11-21T06:00Z (KST 15:00)
+- **최종 HEAD**: `fc922169d7711cbeb38303d3dc48db63a605043c` (`fc92216`) — 5개 워크플로 전부 success
+- 아티팩트는 `gh run download <run-id>`로 내려받아 `SHA256SUMS.txt`·`build-info.json`과 대조했다.
 
-## 최종 5개 워크플로 (커밋 cf00dd8)
+> 재현성 주의: **웹 빌드는 결정적**(같은 소스 → 같은 해시)이지만, **Windows·Android 산출물은 빌드 시각이 바이너리에 박혀** 다시 빌드하면 바이트가 달라진다. 그래서 아래 표는 **실행(run ID) 단위로** 해시를 기록한다. 진본은 그 실행의 `SHA256SUMS.txt` 아티팩트다.
+
+## 최종 실행 (커밋 fc92216)
 
 | 워크플로 | Run ID | 결과 | 링크 |
 |---|---|---|---|
-| verify | `44871990981` | ✅ success | https://github.com/TRAY0328/project-ai-room/actions/runs/44871990981 |
-| build-web | `44871990894` | ✅ success | https://github.com/TRAY0328/project-ai-room/actions/runs/44871990894 |
-| build-android | `44871990867` | ✅ success | https://github.com/TRAY0328/project-ai-room/actions/runs/44871990867 |
-| build-windows | `44871990877` | ✅ success | https://github.com/TRAY0328/project-ai-room/actions/runs/44871990877 |
-| security | `44871990908` | ✅ success | https://github.com/TRAY0328/project-ai-room/actions/runs/44871990908 |
+| verify | `44872798593` | ✅ success | https://github.com/TRAY0328/project-ai-room/actions/runs/44872798593 |
+| build-web | `44872798632` | ✅ success | https://github.com/TRAY0328/project-ai-room/actions/runs/44872798632 |
+| build-android | `44872798638` | ✅ success | https://github.com/TRAY0328/project-ai-room/actions/runs/44872798638 |
+| build-windows | `44872798579` | ✅ success | https://github.com/TRAY0328/project-ai-room/actions/runs/44872798579 |
+| security | `44872798661` | ✅ success | https://github.com/TRAY0328/project-ai-room/actions/runs/44872798661 |
 
-## 아티팩트와 SHA-256
-
-### Windows x64 — run `44871990877` (`windows-x64-cf00dd8…`)
-
-| 파일 | 크기(bytes) | SHA-256 |
+| 산출물 | 크기(bytes) | SHA-256 |
 |---|---|---|
-| `AI ROOM.exe` | 4,820,992 | `d76a019bb603f9deb4cfbcf63d88bb31bc7db2fa6608e787124dcf27aefe89a0` |
-| `AI ROOM_0.1.0_x64-setup.exe` (NSIS) | 1,873,186 | `de3fbaa8411db40c5e9168c1a180140c636fb8892b6292a3077bb0bcf507cff5` |
-| `AI ROOM_0.1.0_x64_en-US.msi` | 2,510,848 | `416c4f8bee11e570ec173213ef0378d9aeaae62debd81d4df15df43f50919ff9` |
-| `SHA256SUMS.txt` | 269 | `4e6a376f2e0953205be2dc03aa3fdb897e5fd3446650bf2c9654d7b437e4eb81` |
+| `AI ROOM.exe` | 4,820,992 | `7e600b0d732790f8a2dccc3b7fdd16ab93eb53d15467678782bd08d0b695a58e` |
+| `AI ROOM_0.1.0_x64-setup.exe` (NSIS) | 1,873,114 | `261958dea0c0c1c27597843f4e575899616ecc042f6d83dc7344b11d92aaf0f8` |
+| `AI ROOM_0.1.0_x64_en-US.msi` | 2,510,848 | `0eae82422b320745520b3e09b76a579af7b9059f2168a39c42e532222bb23343` |
+| `app-debug.apk` | 9,146,029 | `d254707b1400ab50f21cdfa6af3beff8c9d5bed2f4216401d67710995b60de0f` |
+| `dist/index.html` | – | `c11a67b23fea5abd8b5dcf6fedcf4fac9ac2f354bd1e9fbf31a17850aa65e536` |
+| `dist/ai-portal.txt` = `dist/llms.txt` | – | `593f41ea22cfe294b9c55a9ffe55151353b8da47302fc41a8b5609feb926ae66` |
 
-- `build-info.json`: `built_at 2026-11-21T05:47:38Z`, `signing: unsigned — 코드 서명 인증서 없음(SmartScreen 경고 발생)`, `verification_status: BUILT_UNVERIFIED`
-- Windows 11 x64 러너(windows-latest), rustc 1.100.0, Tauri 2.12.7 · `cargo fmt --check`·`cargo test` 통과 후 EXE+NSIS+MSI 빌드
+- `build-info.json`(windows): `built_at 2026-11-21T05:55:08Z`, `signing: unsigned`, `BUILT_UNVERIFIED`
+- `build-info.json`(android): JDK 17.0.21, `release_signed: false`, `BUILT_UNVERIFIED`
+- `build-info.json`(web): `built_at 2026-11-21T05:51:50Z`, `signing: none`, 12개 파일 4.5MB
 
-### Android — run `44871990867` (`android-cf00dd8…`)
+## 첫 Green 실행 (커밋 cf00dd8) — 참고
 
-| 파일 | 크기(bytes) | SHA-256 |
+| 워크플로 | Run ID | 결과 |
 |---|---|---|
-| `app-debug.apk` | 9,146,029 | `ce281f78d7a40e967e98ea4735be3758a5d62c8f7430920e090e65236077d0d8` |
+| verify | `44871990981` | ✅ success |
+| build-web | `44871990894` | ✅ success |
+| build-android | `44871990867` | ✅ success |
+| build-windows | `44871990877` | ✅ success |
+| security | `44871990908` | ✅ success |
 
-- `build-info.json`: JDK `17.0.21`, `release_signed: false`(서명 시크릿 없음 → debug APK만), `BUILT_UNVERIFIED`
-- **release APK는 생성되지 않았다.** 서명 키 시크릿(`AIROOM_ANDROID_KEYSTORE_*`)이 없기 때문이며, 워크플로가 그 사실을 출력하고 넘어가도록 되어 있다.
-
-### Web — run `44871990894` (`web-dist-cf00dd8…`)
-
-- `dist/` 12개 파일, 4.5MB
-- `index.html` `c11a67b23fea5abd8b5dcf6fedcf4fac9ac2f354bd1e9fbf31a17850aa65e536`
-- `ai-portal.txt` = `llms.txt` `593f41ea22cfe294b9c55a9ffe55151353b8da47302fc41a8b5609feb926ae66`
-- 로컬 빌드 해시와 **동일**하다(빌드 결정성 확인). `verification_status: BUILT_UNVERIFIED`, `signing: none`
+이 실행의 해시는 `AI ROOM.exe d76a019b…efe89a0` · NSIS `de3fbaa8…507cff5` · MSI `416c4f8b…50919ff9` · `app-debug.apk ce281f78…6077d0d8`. 위 재현성 주의대로 바이트가 위 최종 실행과 다르다(소스 동일).
 
 ## 실행 중 고친 실패 (원인 → 조치)
 

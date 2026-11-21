@@ -44,7 +44,7 @@ test("owner login verifies the PBKDF2 verifier and rate limits guesses", async (
     assert.equal(bad.json.error.code, "AUTH_REQUIRED");
 
     // The verifier is a PBKDF2 string, not the password, and is not in D1.
-    assert.match(env.OWNER_PASSWORD_VERIFIER, /^pbkdf2\$210000\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/);
+    assert.match(env.OWNER_PASSWORD_VERIFIER, /^pbkdf2\$100000\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/);
     const ownerRow = env.DB && (await env.DB.prepare("SELECT * FROM owners").all()).results[0];
     assert.equal(JSON.stringify(ownerRow).includes("pbkdf2"), false, "password verifier must not be stored in D1");
 

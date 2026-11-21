@@ -125,7 +125,7 @@ node scripts/verify-release.mjs                  # G-01..G-12 판정
 ### 4.2 유출됐는지 판단하는 기준
 
 - 키 원문이 로그·아티팩트·브라우저 번들에 **한 번이라도** 보이면 유출로 본다. 마스킹(`packages/git`의 `redactSecrets`)은 사후 안전망이지 면죄부가 아니다.
-- 저장 형태는 해시뿐이어야 한다: `agent_credentials.verifier_hash`(SHA-256), 비밀번호는 PBKDF2-SHA256(210,000회). 평문이 보이면 그 자체가 사고다.
+- 저장 형태는 해시뿐이어야 한다: `agent_credentials.verifier_hash`(SHA-256), 비밀번호는 PBKDF2-SHA256(100,000회). 평문이 보이면 그 자체가 사고다.
 
 ### 4.3 비상 정지 (emergency stop)
 

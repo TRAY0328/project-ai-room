@@ -1,6 +1,6 @@
 # 릴리스 게이트 검증 결과 (자동 생성)
 
-- 실행: 2026-11-21T05:51:12.446Z
+- 실행: 2026-11-21T05:56:43.796Z
 - 판정: **INCOMPLETE**
 - 증거 원장: docs/evidence/release-evidence.json
 
@@ -11,8 +11,8 @@
 | G-03 | BLOCKED | 다중 실제 AI의 상호 작업 종단간 시연 | ledger:G-03=BLOCKED (1개 증거 · Pickle(에이전트) — qa_matrix_runner/verify-release 실행 · 지정 AI 8종의 키·계정이 없다(Q039 blocker 8/8). 실제 다중 AI 협업 시연 불가.) |
 | G-04 | PARTIAL | GitHub PR, Actions 빌드/테스트, 검증 병합 | ledger:G-04=PARTIAL (3개 증거 · Pickle(에이전트) — gh run list/download로 실행·아티팩트 확인 · Actions 5종 전부 success(커밋 cf00dd8). 다만 PR 생성·리뷰·검증 병합 흐름은 실제로 돌리지 않았다(푸시 직행).) |
 | G-05 | PARTIAL | 웹 앱 실제 로그인·대화·프로젝트·IDE | web-build=PASS (apps/web/dist 파일 4개); ledger:G-05=PARTIAL (2개 증거 · Pickle(에이전트) — 원격 HTTP 실측 · 홈/포털문서/헬스/인증가드 라이브 200·401 확인. 소유자 계정 미생성으로 로그인·대화·IDE 실사용 시연은 미실시.) |
-| G-06 | PARTIAL | Windows EXE 및 설치 파일 생성·설치·실행 | windows-artifact=NOT_TESTED (apps/desktop 아래 .exe/.msi 없음); ledger:G-06=PARTIAL (2개 증거 · Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조 · AI ROOM.exe 4,820,992B / NSIS 1,873,186B / MSI 2,510,848B 생성, SHA-256 기록. 실제 Windows 기기 설치·실행 시험과 코드 서명은 미실시(미서명).) |
-| G-07 | PARTIAL | Android APK 생성·서명 상태·실기기 설치 | android-artifact=PASS (apps/android/app/build/outputs/apk/debug/app-debug.apk, apps/android/app/build/outputs/apk/release/app-release-unsigned.apk); ledger:G-07=PARTIAL (3개 증거 · Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조 · CI debug APK 9,146,029B SHA-256 ce281f78…0d0d8(로컬 빌드와 동일). release APK는 서명 키 부재로 미생성, 실기기 설치 미실시.) |
+| G-06 | PARTIAL | Windows EXE 및 설치 파일 생성·설치·실행 | windows-artifact=NOT_TESTED (apps/desktop 아래 .exe/.msi 없음); ledger:G-06=PARTIAL (2개 증거 · Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조 · AI ROOM.exe 4,820,992B / NSIS 1,873,114B / MSI 2,510,848B 생성, SHA-256 기록. 실제 Windows 기기 설치·실행 시험과 코드 서명은 미실시(미서명).) |
+| G-07 | PARTIAL | Android APK 생성·서명 상태·실기기 설치 | android-artifact=PASS (apps/android/app/build/outputs/apk/debug/app-debug.apk, apps/android/app/build/outputs/apk/release/app-release-unsigned.apk); ledger:G-07=PARTIAL (3개 증거 · Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조 · CI debug APK 9,146,029B SHA-256 d254707b…95b60de0f. release APK는 서명 키 부재로 미생성, 실기기 설치 미실시.) |
 | G-08 | BLOCKED | 보안(인증·ACL·CI·파일·비밀·인젝션) | security-cases=BLOCKED (Critical/High 37건 중 PASS 14 · FAILED 0 · 전체 50건 {"PASS":17,"PARTIAL":11,"FAILED":0,"BLOCKED":2,"NOT_TESTED":20}) |
 | G-09 | PARTIAL | 장애·재접속·인계·중복 방지 | 장애·복구 항목=PARTIAL (장애·복구 항목: PASS 5, NOT_TESTED 2, PARTIAL 2 (9항목)) |
 | G-10 | BLOCKED | 메시지·기억·파일·코드·백업 무결성 | 무결성 항목=BLOCKED (무결성 항목: PASS 7, BLOCKED 1, PARTIAL 3 (11항목)); db-integrity-suite=PASS (tests/integration/api_admin.test.mjs: 8 pass/0 fail, tests/integration/api_chat.test.mjs: 9 pass/0 fail, tests/integration/api_code.test.mjs: 8 pass/0 fail, tests/integration/api_coverage.test.mjs: 2 pass/0 fail, tests/integration/api_cross_cutting.test.mjs: 4 pass/0 fail, tests/integration/api_identity.test.mjs: 10 pass/0 fail, tests/integration/api_projects.test.mjs: 6 pass/0 fail, tests/integration/db_schema.test.mjs: 16 pass/0 fail); ledger:G-10=PARTIAL (1개 증거 · Pickle(에이전트) — wrangler d1 원격 실행 · 원격 D1에 0001_initial 적용(테이블 97·트리거 26·인덱스 151). PRAGMA integrity_check는 D1이 SQLITE_AUTH로 거부해 로컬 SQLite에서만 확인.) |
@@ -33,9 +33,9 @@
   - ledger:G-05: 2개 증거 · Pickle(에이전트) — 원격 HTTP 실측 · 홈/포털문서/헬스/인증가드 라이브 200·401 확인. 소유자 계정 미생성으로 로그인·대화·IDE 실사용 시연은 미실시.
 - **G-06 PARTIAL**
   - windows-artifact: apps/desktop 아래 .exe/.msi 없음
-  - ledger:G-06: 2개 증거 · Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조 · AI ROOM.exe 4,820,992B / NSIS 1,873,186B / MSI 2,510,848B 생성, SHA-256 기록. 실제 Windows 기기 설치·실행 시험과 코드 서명은 미실시(미서명).
+  - ledger:G-06: 2개 증거 · Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조 · AI ROOM.exe 4,820,992B / NSIS 1,873,114B / MSI 2,510,848B 생성, SHA-256 기록. 실제 Windows 기기 설치·실행 시험과 코드 서명은 미실시(미서명).
 - **G-07 PARTIAL**
-  - ledger:G-07: 3개 증거 · Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조 · CI debug APK 9,146,029B SHA-256 ce281f78…0d0d8(로컬 빌드와 동일). release APK는 서명 키 부재로 미생성, 실기기 설치 미실시.
+  - ledger:G-07: 3개 증거 · Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조 · CI debug APK 9,146,029B SHA-256 d254707b…95b60de0f. release APK는 서명 키 부재로 미생성, 실기기 설치 미실시.
 - **G-08 BLOCKED**
   - security-cases: Critical/High 37건 중 PASS 14 · FAILED 0 · 전체 50건 {"PASS":17,"PARTIAL":11,"FAILED":0,"BLOCKED":2,"NOT_TESTED":20}
 - **G-09 PARTIAL**

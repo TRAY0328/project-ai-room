@@ -128,7 +128,12 @@ export function timingSafeEqualString(a: string, b: string): boolean {
   return diff === 0;
 }
 
-export const PBKDF2_ITERATIONS = 210_000;
+// Cloudflare Workers' WebCrypto rejects PBKDF2 above 100,000 iterations
+// ("iteration counts above 100000 are not supported"), so 100,000 is the
+// highest value the deployed Worker can use. The iteration count is stored in
+// the verifier string, so a verifier made elsewhere with another count still
+// verifies.
+export const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
 const KEY_BYTES = 32;
 

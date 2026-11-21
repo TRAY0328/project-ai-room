@@ -14,15 +14,24 @@
   },
   "ci": {
     "repository": "https://github.com/TRAY0328/project-ai-room",
-    "commit": "cf00dd884e39095986655b392f156db9075d2d89",
+    "commit": "fc922169d7711cbeb38303d3dc48db63a605043c",
     "evidence": "docs/evidence/ci-runs.md",
     "runs": {
-      "verify": { "run_id": 44871990981, "conclusion": "success" },
-      "build-web": { "run_id": 44871990894, "conclusion": "success" },
-      "build-android": { "run_id": 44871990867, "conclusion": "success" },
-      "build-windows": { "run_id": 44871990877, "conclusion": "success" },
-      "security": { "run_id": 44871990908, "conclusion": "success" }
-    }
+      "verify": { "run_id": 44872798593, "conclusion": "success" },
+      "build-web": { "run_id": 44872798632, "conclusion": "success" },
+      "build-android": { "run_id": 44872798638, "conclusion": "success" },
+      "build-windows": { "run_id": 44872798579, "conclusion": "success" },
+      "security": { "run_id": 44872798661, "conclusion": "success" }
+    },
+    "artifacts": {
+      "AI ROOM.exe": { "size_bytes": 4820992, "sha256": "7e600b0d732790f8a2dccc3b7fdd16ab93eb53d15467678782bd08d0b695a58e" },
+      "AI ROOM_0.1.0_x64-setup.exe": { "size_bytes": 1873114, "sha256": "261958dea0c0c1c27597843f4e575899616ecc042f6d83dc7344b11d92aaf0f8" },
+      "AI ROOM_0.1.0_x64_en-US.msi": { "size_bytes": 2510848, "sha256": "0eae82422b320745520b3e09b76a579af7b9059f2168a39c42e532222bb23343" },
+      "app-debug.apk": { "size_bytes": 9146029, "sha256": "d254707b1400ab50f21cdfa6af3beff8c9d5bed2f4216401d67710995b60de0f" },
+      "dist/index.html": { "sha256": "c11a67b23fea5abd8b5dcf6fedcf4fac9ac2f354bd1e9fbf31a17850aa65e536" },
+      "dist/ai-portal.txt": { "sha256": "593f41ea22cfe294b9c55a9ffe55151353b8da47302fc41a8b5609feb926ae66" }
+    },
+    "note": "웹 빌드는 결정적, Windows/Android는 빌드 시각이 박혀 재빌드 시 바이트가 달라진다. 진본은 각 run의 SHA256SUMS.txt 아티팩트."
   },
   "gates": {
     "G-03": {
@@ -36,7 +45,7 @@
       "status": "PARTIAL",
       "verified_at": "2026-11-21T05:50:00Z",
       "verified_by": "Pickle(에이전트) — gh run list/download로 실행·아티팩트 확인",
-      "evidence": ["docs/evidence/ci-runs.md", "run:44871990981", "run:44871990877"],
+      "evidence": ["docs/evidence/ci-runs.md", "run:44872798593", "run:44872798579"],
       "note": "Actions 5종 전부 success(커밋 cf00dd8). 다만 PR 생성·리뷰·검증 병합 흐름은 실제로 돌리지 않았다(푸시 직행)."
     },
     "G-05": {
@@ -53,15 +62,15 @@
       "status": "PARTIAL",
       "verified_at": "2026-11-21T05:50:00Z",
       "verified_by": "Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조",
-      "evidence": ["docs/evidence/ci-runs.md", "run:44871990877"],
-      "note": "AI ROOM.exe 4,820,992B / NSIS 1,873,186B / MSI 2,510,848B 생성, SHA-256 기록. 실제 Windows 기기 설치·실행 시험과 코드 서명은 미실시(미서명)."
+      "evidence": ["docs/evidence/ci-runs.md", "run:44872798579"],
+      "note": "AI ROOM.exe 4,820,992B / NSIS 1,873,114B / MSI 2,510,848B 생성, SHA-256 기록. 실제 Windows 기기 설치·실행 시험과 코드 서명은 미실시(미서명)."
     },
     "G-07": {
       "status": "PARTIAL",
       "verified_at": "2026-11-21T05:50:00Z",
       "verified_by": "Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조",
-      "evidence": ["docs/evidence/ci-runs.md", "docs/evidence/android-local-build.md", "run:44871990867"],
-      "note": "CI debug APK 9,146,029B SHA-256 ce281f78…0d0d8(로컬 빌드와 동일). release APK는 서명 키 부재로 미생성, 실기기 설치 미실시."
+      "evidence": ["docs/evidence/ci-runs.md", "docs/evidence/android-local-build.md", "run:44872798638"],
+      "note": "CI debug APK 9,146,029B SHA-256 d254707b…95b60de0f. release APK는 서명 키 부재로 미생성, 실기기 설치 미실시."
     },
     "G-10": {
       "status": "PARTIAL",
