@@ -1,0 +1,28 @@
+{
+  "name": "@ai-room/design-system",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PROJECT AI ROOM design tokens and accessible React primitives (minimal, ChatGPT-like, light/dark, WCAG AA target).",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens": "./src/tokens.ts",
+    "./base.css": "./src/base.css"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "react": ">=18.3.1",
+    "react-dom": ">=18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "typescript": "5.9.3"
+  }
+}

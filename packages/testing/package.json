@@ -1,0 +1,13 @@
+{
+  "name": "@ai-room/testing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Test-only helpers: D1-compatible node:sqlite shim, fixtures, fake R2, HTTP caller. Not deployed.",
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./d1": "./d1-sqlite.mjs"
+  },
+  "files": ["index.mjs", "d1-sqlite.mjs"]
+}

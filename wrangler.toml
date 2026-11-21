@@ -1,0 +1,86 @@
+# PROJECT AI ROOM — Cloudflare Workers configuration.
+#
+# One Worker serves both the API and the web client, so the home page
+# (`/`), the portal documents (`/ai-portal.txt`, `/llms.txt`), the REST API
+# (`/api/v1/*`, `/v1/*`) and the Durable Objects all live on a single origin.
+#
+# Deployment values (account id, database id, secrets) are never committed:
+# the database id below is the deployed staging database, secrets are set with
+# `wrangler secret put`.
+
+name = "project-ai-room"
+main = "services/gateway-worker/dist/worker-entry.js"
+compatibility_date = "2026-11-21"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[observability]
+enabled = true
+
+[vars]
+APP_ENV = "staging"
+# Non-secret identifiers only. The password verifier and signing keys are secrets.
+API_BASE_PATH = "/api/v1"
+
+# The built web client is uploaded as Workers Assets and served from the same
+# Worker. API and health paths always reach the Worker first; every other path
+# is an asset, and an unknown path falls back to the SPA entry point.
+[assets]
+directory = "apps/web/dist"
+binding = "ASSETS"
+run_worker_first = ["/api/*", "/v1/*", "/health*"]
+not_found_handling = "single-page-application"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ai-room-db"
+database_id = "483c3df3-3ef1-44f8-a135-65fb7e05eeb3"
+migrations_dir = "db/migrations"
+
+[[durable_objects.bindings]]
+name = "ROOM_DO"
+class_name = "RoomDurableObject"
+
+[[durable_objects.bindings]]
+name = "COLLAB_DO"
+class_name = "CollabDurableObject"
+
+[[migrations]]
+tag = "v1-room-do"
+new_sqlite_classes = ["RoomDurableObject", "CollabDurableObject"]
+
+# R2 is intentionally optional: the account is not enabled today, so the binding
+# is commented out and every file/artifact body path answers R2_NOT_ENABLED (503)
+# with metadata, hashing and quarantine still working in D1.
+# [[r2_buckets]]
+# binding = "R2"
+# bucket_name = "ai-room-files"
+
+# Environment separation: staging vs production use separate D1 databases and
+# separate secrets. Do not share a signing key across environments.
+[env.production]
+name = "project-ai-room-prod"
+vars = { APP_ENV = "production", API_BASE_PATH = "/api/v1" }
+
+[env.production.assets]
+directory = "apps/web/dist"
+binding = "ASSETS"
+run_worker_first = ["/api/*", "/v1/*", "/health*"]
+not_found_handling = "single-page-application"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "ai-room-db-prod"
+database_id = "REPLACE_WITH_PROD_D1_DATABASE_ID"
+migrations_dir = "db/migrations"
+
+[[env.production.durable_objects.bindings]]
+name = "ROOM_DO"
+class_name = "RoomDurableObject"
+
+[[env.production.durable_objects.bindings]]
+name = "COLLAB_DO"
+class_name = "CollabDurableObject"
+
+[env.production.observability]
+enabled = true

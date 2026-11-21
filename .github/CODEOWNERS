@@ -1,0 +1,7 @@
+# 소유자 승인 없이는 어떤 경로도 병합하지 않는다.
+* @TRAY0328
+
+# 계약·스키마는 특히 엄격하게: 모든 서비스와 클라이언트가 여기에 의존한다.
+/packages/contracts/ @TRAY0328
+/db/migrations/      @TRAY0328
+/.github/workflows/  @TRAY0328

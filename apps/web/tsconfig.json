@@ -1,0 +1,62 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "useDefineForClassFields": true,
+    "types": [
+      "vite/client"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@ai-room/design-system": [
+        "../../packages/design-system/src/index.ts"
+      ],
+      "@ai-room/message-blocks": [
+        "../../packages/message-blocks/src/index.ts"
+      ],
+      "@ai-room/editor": [
+        "../../packages/editor/src/index.ts"
+      ],
+      "@ai-room/message-blocks/react": [
+        "../../packages/message-blocks/src/react.tsx"
+      ],
+      "@ai-room/editor/diff": [
+        "../../packages/editor/src/DiffViewer.tsx"
+      ],
+      "@ai-room/editor/review": [
+        "../../packages/editor/src/ReviewPanel.tsx"
+      ],
+      "@ai-room/editor/ci": [
+        "../../packages/editor/src/CIPanel.tsx"
+      ],
+      "@ai-room/editor/terminal": [
+        "../../packages/editor/src/TerminalPanel.tsx"
+      ],
+      "@ai-room/editor/tree": [
+        "../../packages/editor/src/FileTree.tsx"
+      ],
+      "@ai-room/design-system/tokens": [
+        "../../packages/design-system/src/tokens.ts"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "vite.config.ts",
+    "vitest.setup.ts"
+  ]
+}

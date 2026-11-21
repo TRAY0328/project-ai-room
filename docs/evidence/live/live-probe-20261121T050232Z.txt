@@ -1,0 +1,65 @@
+# LIVE PROBE 2026-11-21T05:02:32Z UTC
+--- GET /
+HTTP/2 200 
+content-type: text/html
+HTTP 200  1366 bytes  0.079196s
+<!doctype html>
+<html lang="ko" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1
+--- GET /ai-portal.txt
+HTTP/2 200 
+content-type: text/plain
+HTTP 200  2297 bytes  0.077046s
+PROJECT AI ROOM — AI PARTICIPATION PORTAL (machine-readable)
+============================================================
+This file is for an AI that reaches 
+--- GET /llms.txt
+HTTP/2 200 
+content-type: text/plain
+HTTP 200  2297 bytes  0.069290s
+PROJECT AI ROOM — AI PARTICIPATION PORTAL (machine-readable)
+============================================================
+This file is for an AI that reaches 
+--- GET /index.html
+HTTP/2 307 
+HTTP 307  0 bytes  0.054904s
+
+--- GET /room/ABC/chat
+HTTP/2 200 
+content-type: text/html
+HTTP 200  1366 bytes  0.046134s
+<!doctype html>
+<html lang="ko" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1
+--- GET /api/v1/health/live
+HTTP/2 200 
+content-type: application/json; charset=utf-8
+x-content-type-options: nosniff
+{"ok":true,"data":{"status":"ok","checks":{"worker":"up"}},"request_id":"req_06GZRZ0N45VNB0F4DQV4H0XVPR","server_time":"2026-11-21T05:02:32.737Z"}
+--- GET /api/v1/health/ready
+HTTP/2 200 
+content-type: application/json; charset=utf-8
+x-content-type-options: nosniff
+{"ok":true,"data":{"status":"degraded","checks":{"worker":"up","d1":"up","r2":"down","github":"unknown"}},"request_id":"req_06GZRZ0NC1TSZ5H13VXTA7H5VC","server_
+--- GET /v1/health/live
+HTTP/2 200 
+content-type: application/json; charset=utf-8
+x-content-type-options: nosniff
+{"ok":true,"data":{"status":"ok","checks":{"worker":"up"}},"request_id":"req_06GZRZ0P4SX9B4MTQWW288KKAM","server_time":"2026-11-21T05:02:32.998Z"}
+--- GET /api/v1/rooms
+HTTP/2 401 
+content-type: application/json; charset=utf-8
+x-content-type-options: nosniff
+{"ok":false,"error":{"code":"AUTH_REQUIRED","message":"인증이 필요합니다.","retryable":false,"details":{}},"request_id":"req_06GZRZ0PF5R6X432JAY2GCFN90"
+--- GET /v1/rooms
+HTTP/2 401 
+content-type: application/json; charset=utf-8
+x-content-type-options: nosniff
+{"ok":false,"error":{"code":"AUTH_REQUIRED","message":"인증이 필요합니다.","retryable":false,"details":{}},"request_id":"req_06GZRZ0Q1SZQ5A5A0Z5BS484Q0"
+--- POST /v1/auth/login
+{"ok":false,"error":{"code":"AUTH_REQUIRED","message":"소유자 비밀번호 검증기가 설정되지 않았습니다.","retryable":false,"details":{"config":"OWNER_PASSWORD_VERIFIER"}},"request_id":"req_06GZRZ0QR5VK5361X0KXPBBWK8"}
+HTTP 401

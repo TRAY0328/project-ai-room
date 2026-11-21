@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  HTTPS 강제 · 평문 차단.
+  신뢰 앵커는 시스템 인증서만 쓴다(사용자 추가 인증서 미신뢰).
+  디버그 빌드만 src/debug/res/xml/network_security_config.xml에서 localhost·10.0.2.2 평문을 허용한다.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

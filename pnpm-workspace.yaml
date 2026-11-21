@@ -1,0 +1,8 @@
+# pnpm workspace definition.
+# npm workspaces are the primary, verified toolchain in this environment
+# (npm 10.9.3 / node 22.20.0); this file keeps pnpm compatible when it is
+# adopted. Never mix lockfiles: use exactly one package manager per checkout.
+packages:
+  - "packages/*"
+  - "services/*"
+  - "apps/web"

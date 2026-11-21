@@ -1,0 +1,32 @@
+{
+  "name": "project-ai-room",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PROJECT AI ROOM (Q001-Q041) — cloud-only multi-AI collaboration platform. Monorepo.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "services/*",
+    "apps/web"
+  ],
+  "scripts": {
+    "clean": "rm -rf packages/*/dist services/*/dist apps/web/dist",
+    "build": "npm run build --workspace @ai-room/contracts",
+    "typecheck": "tsc -b tsconfig.build.json",
+    "gen:api": "node scripts/gen-api-contracts.mjs",
+    "verify:contracts": "npm run build && node scripts/verify-contracts.mjs",
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "db:check": "node scripts/db-migrate.mjs --check",
+    "test": "npm run build && node --test tests/unit/*.test.mjs tests/integration/*.test.mjs",
+    "test:unit": "npm run build && node --test tests/unit/*.test.mjs",
+    "test:db": "node --test tests/integration/*.test.mjs",
+    "verify": "npm run typecheck && npm run verify:contracts && node --test tests/unit/*.test.mjs tests/integration/*.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

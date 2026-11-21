@@ -1,0 +1,10 @@
+# Tauri 빌드 산출물
+target/
+src-tauri/target/
+
+# tauri-build가 생성하는 스키마·아이콘 캐시
+src-tauri/gen/
+
+# 로컬 실행 산출물
+*.pdb
+*.map

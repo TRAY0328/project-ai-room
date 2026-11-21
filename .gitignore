@@ -1,0 +1,46 @@
+# --- secrets: never commit -------------------------------------------------
+work/.cf_token
+.cf_token
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.pickle_*secrets.json
+.pickle_controller_session.json
+.wrangler/
+.dev.vars
+.dev.vars.*
+
+# --- build output ----------------------------------------------------------
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+apps/web/dist/
+apps/desktop/target/
+apps/android/.gradle/
+apps/android/app/build/
+*.apk
+*.exe
+*.msi
+*.zip
+
+# --- local databases and artifacts ----------------------------------------
+db/local/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+tests/tmp/
+tool-results/
+
+# --- tooling ---------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json

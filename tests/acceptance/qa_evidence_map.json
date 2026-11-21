@@ -1,0 +1,1331 @@
+{
+  "schema_version": 1,
+  "description": "qa_matrix.json 103항목과 security_cases.json 50건의 근거 매핑. 상태는 여기 적지 않는다 — tests/acceptance/qa_matrix_runner.mjs가 실제 테스트·검사 결과로 판정한다.",
+  "kinds": {
+    "evidence[type=test]": "file + match(테스트 이름 부분 일치). 파일이나 이름이 사라지면 FAILED(드리프트)",
+    "evidence[type=check]": "러너가 직접 계산하는 검사 이름(openapi-sync, docs-links, release-report-labels, provider-gate, permission-coverage)",
+    "cap": "PARTIAL: 근거는 통과하지만 기대 결과의 일부 계층만 검증",
+    "missing": "검증되지 않은 계층 설명",
+    "blocked": "외부 의존성 차단(ASSUMPTIONS_AND_BLOCKERS.md의 B-xx)",
+    "not_tested": "시험할 구현이 없거나 근거가 없음"
+  },
+  "qa": {
+    "QA-001": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_identity.test.mjs",
+          "match": "agent registration needs a private invite"
+        },
+        {
+          "type": "test",
+          "file": "tests/acceptance/identity_lifecycle.test.mjs",
+          "match": "QA-001"
+        }
+      ],
+      "note": "HTTP 등록 경로와 서비스 계층 키 해시 저장 모두 확인"
+    },
+    "QA-002": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_identity.test.mjs",
+          "match": "one-time invite is consumed exactly once"
+        },
+        {
+          "type": "test",
+          "file": "tests/acceptance/identity_lifecycle.test.mjs",
+          "match": "QA-002"
+        }
+      ]
+    },
+    "QA-003": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_identity.test.mjs",
+          "match": "one-time invite is consumed exactly once"
+        },
+        {
+          "type": "test",
+          "file": "tests/acceptance/identity_lifecycle.test.mjs",
+          "match": "QA-003"
+        }
+      ]
+    },
+    "QA-004": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_identity.test.mjs",
+          "match": "agent registration needs a private invite"
+        },
+        {
+          "type": "test",
+          "file": "tests/acceptance/identity_lifecycle.test.mjs",
+          "match": "QA-004"
+        }
+      ]
+    },
+    "QA-005": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_identity.test.mjs",
+          "match": "an AI cannot edit another AI's profile"
+        }
+      ]
+    },
+    "QA-006": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_identity.test.mjs",
+          "match": "an AI cannot reach owner administration"
+        }
+      ]
+    },
+    "QA-007": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_identity.test.mjs",
+          "match": "rekey retires the old key"
+        }
+      ]
+    },
+    "QA-008": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_identity.test.mjs",
+          "match": "refresh rotation detects reuse"
+        }
+      ]
+    },
+    "QA-009": {
+      "blocked": "B-02",
+      "note": "공식 AI 키·계정이 없어 실제 챌린지 응답을 받을 수 없다(8종 전부 차단)"
+    },
+    "QA-010": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/identity_lifecycle.test.mjs",
+          "match": "QA-010"
+        }
+      ]
+    },
+    "QA-011": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/unit/contracts.test.mjs",
+          "match": "providers: registry is honest"
+        }
+      ]
+    },
+    "QA-012": {
+      "blocked": "B-02",
+      "note": "실제 AI가 연결되지 않아 오프라인 자율 발화 증거를 만들 수 없다"
+    },
+    "QA-013": {
+      "not_tested": true,
+      "note": "AI 호출 경로 자체가 없어 유료 전환 유혹 시나리오를 시험할 수 없다"
+    },
+    "QA-014": {
+      "blocked": "B-02",
+      "note": "provider 토큰 수명·재발급은 실제 provider 연결 후에만 시험 가능"
+    },
+    "QA-015": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/unit/contracts.test.mjs",
+          "match": "providers: registry is honest"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "작업 배정 단계의 능력 검사는 구현 전",
+      "note": "verifyCapability('message.send')가 전 provider에서 unsupported로 남는지 확인"
+    },
+    "QA-016": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/db_schema.test.mjs",
+          "match": "room_seq is unique per room and one main room only"
+        }
+      ]
+    },
+    "QA-017": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_chat.test.mjs",
+          "match": "search never crosses a room"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "방 초대·강제 제외의 권한 차이는 미시험",
+      "note": "비멤버 방 접근이 403 ROOM_ACCESS_DENIED로 끝나는지 확인"
+    },
+    "QA-018": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_chat.test.mjs",
+          "match": "room_seq is gap-free"
+        }
+      ]
+    },
+    "QA-019": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/chaos/failure_injection.test.mjs",
+          "match": "the same idempotency key in parallel"
+        }
+      ]
+    },
+    "QA-020": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/chaos/failure_injection.test.mjs",
+          "match": "60 concurrent sends"
+        }
+      ]
+    },
+    "QA-021": {
+      "not_tested": true,
+      "note": "메시지 크기 제한을 집행하는 핸들러가 없다"
+    },
+    "QA-022": {
+      "not_tested": true,
+      "note": "멘션 불변 ID 매핑이 미구현"
+    },
+    "QA-023": {
+      "not_tested": true,
+      "note": "스레드/부모 스코프 검증이 미구현"
+    },
+    "QA-024": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/db_schema.test.mjs",
+          "match": "message author immutability"
+        }
+      ]
+    },
+    "QA-025": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/db_schema.test.mjs",
+          "match": "message FTS indexes the newest revision"
+        }
+      ]
+    },
+    "QA-026": {
+      "not_tested": true,
+      "note": "수신 확인·READ_UNKNOWN 표시가 미구현"
+    },
+    "QA-027": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/chaos/failure_injection.test.mjs",
+          "match": "a reconnect without a known socket"
+        }
+      ]
+    },
+    "QA-028": {
+      "not_tested": true,
+      "note": "WebSocket 서버와 권한 회수 시 소켓 종료가 미구현"
+    },
+    "QA-029": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-029"
+        }
+      ]
+    },
+    "QA-030": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-030"
+        }
+      ]
+    },
+    "QA-031": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_chat.test.mjs",
+          "match": "search never crosses a room"
+        }
+      ]
+    },
+    "QA-032": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_chat.test.mjs",
+          "match": "delete is a soft delete with a tombstone"
+        }
+      ]
+    },
+    "QA-033": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_chat.test.mjs",
+          "match": "message pagination is cursor-bounded"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "서명 cursor 변조 시도는 미시험",
+      "note": "cursor 페이지 경계·정렬 확인"
+    },
+    "QA-034": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_chat.test.mjs",
+          "match": "file upload verifies the hash"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "R2 실제 저장이 아니라 테스트 저장소 사용"
+    },
+    "QA-035": {
+      "not_tested": true,
+      "note": "multipart 중단/재개 시험 없음(현재 parts 배열은 빈 값으로 시험)"
+    },
+    "QA-036": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_cross_cutting.test.mjs",
+          "match": "an identical file hash is reported"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "동일 업로드 완료 2회 처리 시험 없음(해시 중복 재사용만 확인)"
+    },
+    "QA-037": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_chat.test.mjs",
+          "match": "file upload verifies the hash"
+        }
+      ]
+    },
+    "QA-038": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-038"
+        }
+      ]
+    },
+    "QA-039": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_chat.test.mjs",
+          "match": "file upload verifies the hash"
+        },
+        {
+          "type": "test",
+          "file": "tests/unit/contracts.test.mjs",
+          "match": "permissions: default deny, owner-only admin"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "다른 프로젝트 파일 ID로 접근하는 교차 프로젝트 시나리오는 미시험"
+    },
+    "QA-040": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_chat.test.mjs",
+          "match": "file upload verifies the hash"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "만료 시각 경과 후 요청은 미시험(서명 변조 401만 확인)"
+    },
+    "QA-041": {
+      "blocked": "B-01",
+      "note": "파일 삭제 시 R2 객체 정리는 R2 활성화 후"
+    },
+    "QA-042": {
+      "blocked": "B-01",
+      "note": "R2 5xx 재시도·조회 차단은 R2 활성화 후"
+    },
+    "QA-043": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-043"
+        }
+      ]
+    },
+    "QA-044": {
+      "not_tested": true,
+      "note": "기억 충돌 상태(conflict_group_id) 컬럼만 있고 충돌 감지 로직이 없다"
+    },
+    "QA-045": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_projects.test.mjs",
+          "match": "memory layers are isolated"
+        }
+      ]
+    },
+    "QA-046": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_projects.test.mjs",
+          "match": "memory layers are isolated"
+        }
+      ]
+    },
+    "QA-047": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/db_schema.test.mjs",
+          "match": "memory FTS: search works"
+        }
+      ]
+    },
+    "QA-048": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_admin.test.mjs",
+          "match": "a backup records a real manifest"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "R2 실제 객체가 아니라 테스트 저장소 사용"
+    },
+    "QA-049": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/chaos/failure_injection.test.mjs",
+          "match": "restore planning detects drift"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "원격 D1 복원 실행은 B-05로 차단"
+    },
+    "QA-050": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_admin.test.mjs",
+          "match": "a restore cannot invent a payload"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "실제 복원 후 재노출 시험은 원격 D1 필요"
+    },
+    "QA-051": {
+      "not_tested": true,
+      "note": "프로젝트 생성 핸들러가 미구현(501)"
+    },
+    "QA-052": {
+      "not_tested": true,
+      "note": "방-프로젝트 연결 API가 미구현"
+    },
+    "QA-053": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/unit/contracts.test.mjs",
+          "match": "permissions: default deny, owner-only admin"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "연결 핸들러 미구현",
+      "note": "비멤버 프로젝트 접근 거부 확인"
+    },
+    "QA-054": {
+      "blocked": "B-02",
+      "note": "실제 AI가 없어 자율 분업 토론 증거를 만들 수 없다"
+    },
+    "QA-055": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_projects.test.mjs",
+          "match": "an AI cannot accept its own claim proposal"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "AI 간 토론·자율 합의 기록은 실제 AI 연결 후"
+    },
+    "QA-056": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_projects.test.mjs",
+          "match": "a task cannot become DONE without verified evidence"
+        }
+      ]
+    },
+    "QA-057": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_projects.test.mjs",
+          "match": "a task dependency must exist in the same project"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "순환 의존(A→B→A) 자체는 미시험"
+    },
+    "QA-058": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/unit/contracts.test.mjs",
+          "match": "job orchestrator: leases fence"
+        }
+      ]
+    },
+    "QA-059": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/unit/contracts.test.mjs",
+          "match": "job orchestrator: leases fence"
+        }
+      ]
+    },
+    "QA-060": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_projects.test.mjs",
+          "match": "handoff needs a valid checkpoint and fences"
+        }
+      ]
+    },
+    "QA-061": {
+      "not_tested": true,
+      "note": "모든 AI 오프라인 시 재개 트리거가 미구현"
+    },
+    "QA-062": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/unit/platform_primitives.test.mjs",
+          "match": "autonomy modes get stricter"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "실제 AI 100회 반복 발화 시험 아님"
+    },
+    "QA-063": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/chaos/failure_injection.test.mjs",
+          "match": "continuity plans reconcile a timeout"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "실제 provider 503 루프는 연결 후"
+    },
+    "QA-064": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/db_schema.test.mjs",
+          "match": "CI conclusions and usage budgets cannot be invented"
+        },
+        {
+          "type": "test",
+          "file": "tests/unit/platform_primitives.test.mjs",
+          "match": "job budgets and reconciliation"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "한도 도달 시 AI 호출 차단은 호출 경로 구현 후",
+      "note": "관측되지 않은 예산을 measured로 저장할 수 없음 확인"
+    },
+    "QA-065": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_admin.test.mjs",
+          "match": "an approval digest must match"
+        },
+        {
+          "type": "test",
+          "file": "tests/integration/api_code.test.mjs",
+          "match": "merge is refused without review, CI and approval"
+        }
+      ]
+    },
+    "QA-066": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_code.test.mjs",
+          "match": "IDE publish commits only when the remote base still matches"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "실제 Yjs 동시 편집 세션은 미시험"
+    },
+    "QA-067": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_code.test.mjs",
+          "match": "IDE publish commits only when the remote base still matches"
+        },
+        {
+          "type": "test",
+          "file": "tests/unit/platform_primitives.test.mjs",
+          "match": "collaboration relay refuses duplicates"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "오프라인 복귀 병합은 미시험"
+    },
+    "QA-068": {
+      "not_tested": true,
+      "note": "CLI 에이전트 presence 정보원이 없어 가짜 커서 금지 규칙을 시험할 수 없다"
+    },
+    "QA-069": {
+      "not_tested": true,
+      "note": "rename/삭제 충돌 처리가 미구현"
+    },
+    "QA-070": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_code.test.mjs",
+          "match": "IDE publish commits only when the remote base still matches"
+        },
+        {
+          "type": "test",
+          "file": "tests/unit/platform_primitives.test.mjs",
+          "match": "collaboration relay refuses duplicates"
+        }
+      ]
+    },
+    "QA-071": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_code.test.mjs",
+          "match": "git actions are blocked with a named reason"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "실제 GitHub 리포·PR 생성은 B-08로 차단",
+      "note": "저장소가 없을 때 성공을 위장하지 않고 이유를 반환하는지 확인"
+    },
+    "QA-072": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_code.test.mjs",
+          "match": "job dispatch, cancel and log redaction"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "실제 Actions run ID는 B-08로 만들 수 없음"
+    },
+    "QA-073": {
+      "not_tested": true,
+      "note": "GitHub API 500 재시도 경로가 미구현"
+    },
+    "QA-074": {
+      "not_tested": true,
+      "note": "필수 테스트 누락 시 SKIPPED_REQUIRED 표시가 미구현"
+    },
+    "QA-075": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-075"
+        }
+      ]
+    },
+    "QA-076": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_code.test.mjs",
+          "match": "webhook signatures, delivery dedupe"
+        }
+      ]
+    },
+    "QA-077": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_code.test.mjs",
+          "match": "webhook signatures, delivery dedupe"
+        }
+      ]
+    },
+    "QA-078": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_code.test.mjs",
+          "match": "webhook signatures, delivery dedupe"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "순서 역전 후 GitHub 상태 재조회는 미시험"
+    },
+    "QA-079": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_code.test.mjs",
+          "match": "merge is refused without review, CI and approval"
+        },
+        {
+          "type": "test",
+          "file": "tests/integration/db_schema.test.mjs",
+          "match": "approvals: no late approval"
+        }
+      ]
+    },
+    "QA-080": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_code.test.mjs",
+          "match": "a failed CI conclusion blocks the merge"
+        },
+        {
+          "type": "test",
+          "file": "tests/unit/platform_primitives.test.mjs",
+          "match": "merge policy demands review at head"
+        }
+      ]
+    },
+    "QA-081": {
+      "not_tested": true,
+      "note": "병합 후 회귀 실패 시 Revert PR 흐름이 미구현"
+    },
+    "QA-082": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_code.test.mjs",
+          "match": "job dispatch, cancel and log redaction"
+        }
+      ]
+    },
+    "QA-083": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/db_schema.test.mjs",
+          "match": "CI conclusions and usage budgets cannot be invented"
+        },
+        {
+          "type": "test",
+          "file": "tests/unit/platform_primitives.test.mjs",
+          "match": "job budgets and reconciliation"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "실제 dispatch 차단은 Actions 연동 후",
+      "note": "관측 불가 예산을 차단으로 다루는 스키마 확인"
+    },
+    "QA-084": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_code.test.mjs",
+          "match": "artifacts must be hash-verified"
+        },
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-084"
+        },
+        {
+          "type": "test",
+          "file": "tests/unit/platform_primitives.test.mjs",
+          "match": "artifact hashes are compared"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "실제 Windows 빌드 산출물은 아직 없다(웹 dist·debug APK는 생성됨)"
+    },
+    "QA-085": {
+      "blocked": "B-09",
+      "note": "debug APK는 생성됐으나 릴리스 서명 키·실기기 설치 검증이 없다"
+    },
+    "QA-086": {
+      "not_tested": true,
+      "note": "apps/web/dist는 생성됐으나 실제 배포 URL·lockfile 고정·로그인 시나리오 검증이 없다"
+    },
+    "QA-087": {
+      "not_tested": true,
+      "note": "웹 UI 미구현"
+    },
+    "QA-088": {
+      "not_tested": true,
+      "note": "Windows 설치 파일 미생성"
+    },
+    "QA-089": {
+      "not_tested": true,
+      "note": "debug APK만 있고 릴리스 서명·실기기 설치 시험이 없다"
+    },
+    "QA-090": {
+      "not_tested": true,
+      "note": "IME 조합 입력 시험은 클라이언트 구현 후"
+    },
+    "QA-091": {
+      "not_tested": true,
+      "note": "저사양 가상 목록 시험 없음"
+    },
+    "QA-092": {
+      "not_tested": true,
+      "note": "스크린리더·키보드 접근성 시험 없음"
+    },
+    "QA-093": {
+      "not_tested": true,
+      "note": "다크 테마 구현·시험 없음"
+    },
+    "QA-094": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_projects.test.mjs",
+          "match": "dashboard reports 50 metrics"
+        }
+      ]
+    },
+    "QA-095": {
+      "not_tested": true,
+      "note": "DEMO 데이터 표시는 클라이언트 구현 후"
+    },
+    "QA-096": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_admin.test.mjs",
+          "match": "an approved row is invalidated by a material change"
+        },
+        {
+          "type": "test",
+          "file": "tests/integration/api_admin.test.mjs",
+          "match": "an approval digest must match"
+        }
+      ]
+    },
+    "QA-097": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_admin.test.mjs",
+          "match": "emergency stop blocks new AI mutations"
+        },
+        {
+          "type": "test",
+          "file": "tests/integration/api_cross_cutting.test.mjs",
+          "match": "emergency stop also closes AI onboarding"
+        }
+      ]
+    },
+    "QA-098": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_admin.test.mjs",
+          "match": "resource budgets distinguish measured and unknown"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "사용량 수집·선제 경보는 배포 후"
+    },
+    "QA-099": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/api_admin.test.mjs",
+          "match": "data deletion needs a digest-bound approval"
+        }
+      ]
+    },
+    "QA-100": {
+      "blocked": "B-05",
+      "note": "원격 D1/R2가 없어 실제 복원 훈련을 할 수 없다"
+    },
+    "QA-101": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/unit/contracts.test.mjs",
+          "match": "providers: registry is honest"
+        }
+      ]
+    },
+    "QA-102": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/release_gates.test.mjs",
+          "match": "QA-102"
+        },
+        {
+          "type": "test",
+          "file": "tests/integration/api_admin.test.mjs",
+          "match": "release gates never claim PASS without evidence"
+        }
+      ]
+    },
+    "QA-103": {
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/openapi_spec.test.mjs",
+          "match": "QA-103"
+        }
+      ]
+    }
+  },
+  "security": {
+    "S01": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/identity_lifecycle.test.mjs",
+          "match": "QA-002"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "초대키 대량 시도·남용 감지 임계는 시험하지 않음"
+    },
+    "S02": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/identity_lifecycle.test.mjs",
+          "match": "QA-002"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "시도 예산 소진까지 반복 시험하지 않음"
+    },
+    "S03": {
+      "severity": "critical",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/identity_lifecycle.test.mjs",
+          "match": "QA-007"
+        }
+      ]
+    },
+    "S04": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/identity_lifecycle.test.mjs",
+          "match": "QA-010"
+        }
+      ]
+    },
+    "S05": {
+      "severity": "medium",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/unit/contracts.test.mjs",
+          "match": "permissions: default deny, owner-only admin"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "HTTP 계층 확인 전"
+    },
+    "S06": {
+      "severity": "critical",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/unit/contracts.test.mjs",
+          "match": "permissions: default deny, owner-only admin"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "감사 기록은 핸들러에서"
+    },
+    "S07": {
+      "severity": "high",
+      "not_tested": true,
+      "note": "파일 ID 열거 시험은 파일 API 구현 후"
+    },
+    "S08": {
+      "severity": "high",
+      "not_tested": true,
+      "note": "서명 URL 단기 만료·1회 사용이 미구현"
+    },
+    "S09": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-038"
+        }
+      ]
+    },
+    "S10": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-038"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "심볼릭 링크 실제 해석 시험은 아카이브 해제 단계에서"
+    },
+    "S11": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-038"
+        }
+      ]
+    },
+    "S12": {
+      "severity": "medium",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-038"
+        }
+      ]
+    },
+    "S13": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-029"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "첨부 격리 미리보기는 파일 기능 구현 후"
+    },
+    "S14": {
+      "severity": "medium",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-030"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "SVG 전용 시험은 아직 없음, URL 정책만 확인"
+    },
+    "S15": {
+      "severity": "medium",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-030"
+        }
+      ]
+    },
+    "S16": {
+      "severity": "medium",
+      "not_tested": true,
+      "note": "코드블록 텍스트 렌더링 회귀 테스트가 없다"
+    },
+    "S17": {
+      "severity": "critical",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "보안 S17"
+        }
+      ]
+    },
+    "S18": {
+      "severity": "medium",
+      "not_tested": true,
+      "note": "정규식 DoS 입력 길이·패턴 제한 시험 없음"
+    },
+    "S19": {
+      "severity": "high",
+      "not_tested": true,
+      "note": "모델 호출이 없어 프롬프트 주입 시험 불가"
+    },
+    "S20": {
+      "severity": "high",
+      "not_tested": true,
+      "note": "GitHub Issue 주입→dispatch 경로 미구현"
+    },
+    "S21": {
+      "severity": "high",
+      "not_tested": true,
+      "note": "웹훅 HMAC 검증 회귀 테스트가 없다"
+    },
+    "S22": {
+      "severity": "medium",
+      "not_tested": true,
+      "note": "delivery id 재전송 멱등 시험 없음"
+    },
+    "S23": {
+      "severity": "high",
+      "not_tested": true,
+      "note": "OAuth state/nonce/PKCE 흐름이 미구현"
+    },
+    "S24": {
+      "severity": "critical",
+      "not_tested": true,
+      "note": "GitHub App 설치·단기 토큰 흐름이 미구현"
+    },
+    "S25": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-075"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "브랜치 보호·워크플로 권한 설정은 리포 생성 후"
+    },
+    "S26": {
+      "severity": "critical",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-075"
+        }
+      ]
+    },
+    "S27": {
+      "severity": "high",
+      "not_tested": true,
+      "note": "CI 의존성 설치 격리 시험 없음"
+    },
+    "S28": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-084"
+        }
+      ]
+    },
+    "S29": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/db_schema.test.mjs",
+          "match": "task DONE requires verified evidence"
+        }
+      ]
+    },
+    "S30": {
+      "severity": "low",
+      "not_tested": true,
+      "note": "반복 발화 제한 미구현"
+    },
+    "S31": {
+      "severity": "high",
+      "not_tested": true,
+      "note": "SSRF allowlist·IP 차단 미구현"
+    },
+    "S32": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-082"
+        }
+      ]
+    },
+    "S33": {
+      "severity": "critical",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/db_schema.test.mjs",
+          "match": "approvals: no late approval"
+        }
+      ]
+    },
+    "S34": {
+      "severity": "critical",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-080"
+        }
+      ]
+    },
+    "S35": {
+      "severity": "medium",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/unit/contracts.test.mjs",
+          "match": "job orchestrator: leases fence"
+        }
+      ]
+    },
+    "S36": {
+      "severity": "high",
+      "not_tested": true,
+      "note": "프로젝트 링크 공유 ACL 미구현"
+    },
+    "S37": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/db_schema.test.mjs",
+          "match": "message FTS indexes the newest revision"
+        }
+      ]
+    },
+    "S38": {
+      "severity": "high",
+      "blocked": "B-05",
+      "note": "복원 시험 전에는 삭제 데이터 재등장 여부를 확인할 수 없다"
+    },
+    "S39": {
+      "severity": "critical",
+      "not_tested": true,
+      "note": "백업 암호화 키 분리가 미구현"
+    },
+    "S40": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/db_schema.test.mjs",
+          "match": "CI conclusions and usage budgets cannot be invented"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "실제 한도 조회·차단은 배포 후"
+    },
+    "S41": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/integration/db_schema.test.mjs",
+          "match": "approvals: no late approval"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "승인 UI nonce·클릭재생 방지는 승인 센터 구현 후"
+    },
+    "S42": {
+      "severity": "high",
+      "not_tested": true,
+      "note": "WebSocket 재인가 미구현"
+    },
+    "S43": {
+      "severity": "critical",
+      "not_tested": true,
+      "note": "클라이언트 번들 비밀 스캔 시험 없음"
+    },
+    "S44": {
+      "severity": "medium",
+      "blocked": "B-09",
+      "note": "APK 서명 키 관리·배포 통제는 빌드 파이프라인 구축 후"
+    },
+    "S45": {
+      "severity": "critical",
+      "not_tested": true,
+      "note": "관리자 전체 삭제 영향 예측·승인 흐름 미구현"
+    },
+    "S46": {
+      "severity": "low",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-030"
+        }
+      ],
+      "cap": "PARTIAL",
+      "missing": "외부 링크 경고 UI는 클라이언트 구현 후"
+    },
+    "S47": {
+      "severity": "medium",
+      "not_tested": true,
+      "note": "인증된 수신 확인 경로가 없다"
+    },
+    "S48": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/policy_guards.test.mjs",
+          "match": "QA-080"
+        }
+      ]
+    },
+    "S49": {
+      "severity": "high",
+      "evidence": [
+        {
+          "type": "test",
+          "file": "tests/acceptance/identity_lifecycle.test.mjs",
+          "match": "QA-007"
+        }
+      ]
+    },
+    "S50": {
+      "severity": "medium",
+      "not_tested": true,
+      "note": "약관·문서 재검증 절차는 자동화돼 있지 않다"
+    }
+  }
+}

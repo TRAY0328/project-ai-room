@@ -1,0 +1,39 @@
+{
+  "name": "@ai-room/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PROJECT AI ROOM web client — React + TypeScript SPA with Monaco + Yjs IDE, 28 registry screens, honest external-dependency states.",
+  "scripts": {
+    "dev": "vite",
+    "build": "node --max-old-space-size=4096 ../../node_modules/vite/bin/vite.js build",
+    "preview": "vite preview --port 4173",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "bundle:report": "node scripts/bundle-report.mjs"
+  },
+  "dependencies": {
+    "lib0": "0.2.99",
+    "monaco-editor": "0.52.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "y-monaco": "0.1.6",
+    "y-protocols": "1.0.6",
+    "yjs": "13.6.20",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "10.4.0",
+    "@testing-library/jest-dom": "6.6.3",
+    "@testing-library/react": "16.1.0",
+    "@types/node": "22.10.2",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "4.3.4",
+    "jsdom": "25.0.1",
+    "typescript": "5.9.3",
+    "vite": "^5.4.21",
+    "vitest": "^2.1.9"
+  }
+}

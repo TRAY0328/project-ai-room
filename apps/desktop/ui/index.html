@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI ROOM — 연결 설정</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <span class="brand-ring"></span>
+          <span class="brand-dots"><i></i><i></i><i></i></span>
+        </div>
+        <div class="brand-text">
+          <h1>AI ROOM</h1>
+          <p>클라우드 작업 공간 · 데스크톱 셸</p>
+        </div>
+        <span class="chip" id="version-chip">v–</span>
+      </header>
+
+      <section class="card status" aria-labelledby="status-title">
+        <div class="status-head">
+          <h2 id="status-title">연결 상태</h2>
+          <span class="pill" id="status-pill" role="status" aria-live="polite">확인 전</span>
+        </div>
+        <p class="status-detail" id="status-detail">서버 주소를 저장하면 30초마다 자동으로 확인합니다.</p>
+        <dl class="status-meta">
+          <div><dt>대상</dt><dd id="status-target">—</dd></div>
+          <div><dt>응답 시간</dt><dd id="status-latency">—</dd></div>
+          <div><dt>마지막 확인</dt><dd id="status-checked">—</dd></div>
+        </dl>
+        <p class="note" id="load-note" hidden></p>
+      </section>
+
+      <section class="card" aria-labelledby="server-title">
+        <h2 id="server-title">서버</h2>
+        <label class="field">
+          <span class="field-label">Cloudflare Workers 주소</span>
+          <input
+            id="server-url"
+            type="url"
+            inputmode="url"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="https://ai-room.내계정.workers.dev"
+          />
+          <span class="field-hint">https:// 주소만 허용됩니다. 기본값은 두지 않습니다 — 확인된 주소가 없기 때문입니다.</span>
+        </label>
+        <div class="row">
+          <button id="save-button" class="primary" type="button">저장하고 확인</button>
+          <button id="test-button" class="ghost" type="button">저장 없이 시험</button>
+        </div>
+        <p class="test-result" id="test-result" hidden></p>
+      </section>
+
+      <section class="card" aria-labelledby="options-title">
+        <h2 id="options-title">동작</h2>
+        <label class="switch">
+          <input id="open-on-start" type="checkbox" />
+          <span>앱을 열 때 작업 공간 창도 함께 열기</span>
+        </label>
+        <label class="field">
+          <span class="field-label">테마</span>
+          <select id="theme">
+            <option value="system">시스템 설정 따르기</option>
+            <option value="light">밝게</option>
+            <option value="dark">어둡게</option>
+          </select>
+        </label>
+      </section>
+
+      <div class="row actions">
+        <button id="open-button" class="primary wide" type="button">AI ROOM 열기</button>
+        <button id="clear-button" class="ghost danger" type="button">로그아웃 (이 기기 세션 지우기)</button>
+      </div>
+
+      <section class="card guidance" aria-labelledby="security-title">
+        <h2 id="security-title">보안 안내</h2>
+        <ul>
+          <li>이 앱은 <strong>클라우드 서버에만</strong> 연결합니다. 로컬 셸 실행기·빌드 서비스를 포함하지 않습니다.</li>
+          <li>AI 제공자 키와 Cloudflare 토큰은 <strong>앱에 저장하지 않습니다</strong>. 키는 웹 화면의 연결 설정에서 HTTPS로 서버에만 보내집니다.</li>
+          <li>로그인 세션은 Windows WebView2 프로필(DPAPI 보호)에만 남고, 앱이 쿠키 값을 읽지 않습니다.</li>
+          <li>원격 화면은 이 셸의 명령을 호출할 권한이 없습니다(창 라벨·IPC 권한 분리).</li>
+          <li>설정 파일에는 서버 주소·동작·테마만 저장됩니다.</li>
+        </ul>
+        <details>
+          <summary>진단 정보</summary>
+          <pre id="diagnostics">불러오는 중…</pre>
+        </details>
+      </section>
+
+      <footer class="footer">
+        <span id="config-path">설정 파일: —</span>
+      </footer>
+    </main>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

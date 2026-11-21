@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/contracts" },
+    { "path": "./services/gateway-worker" },
+    { "path": "./services/room-do" },
+    { "path": "./services/collab-do" },
+    { "path": "./services/provider-adapters" },
+    { "path": "./services/github-integration" },
+    { "path": "./services/job-orchestrator" }
+  ]
+}

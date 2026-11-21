@@ -1,0 +1,62 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AI ROOM",
+  "version": "0.1.0",
+  "identifier": "app.airoom.desktop",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "settings",
+        "title": "AI ROOM — 연결 설정",
+        "url": "index.html",
+        "width": 560,
+        "height": 780,
+        "minWidth": 480,
+        "minHeight": 600,
+        "resizable": true,
+        "center": true,
+        "visible": true,
+        "focus": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      "freezePrototype": true
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "publisher": "PROJECT AI ROOM",
+    "copyright": "UNLICENSED — 내부 전용 빌드",
+    "category": "Productivity",
+    "shortDescription": "AI ROOM 클라우드 작업 공간 클라이언트",
+    "longDescription": "PROJECT AI ROOM의 Windows 클라이언트. 화면은 Cloudflare Workers의 웹 앱을 HTTPS/WSS로 불러오며, 로컬 셸·빌드 실행기는 포함하지 않습니다.",
+    "createUpdaterArtifacts": false,
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "allowDowngrades": false,
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["Korean", "English"],
+        "displayLanguageSelector": true,
+        "startMenuFolder": "AI ROOM",
+        "compression": "lzma"
+      }
+    }
+  }
+}

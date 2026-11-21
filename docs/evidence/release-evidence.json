@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-11-21T05:10:00Z",
+  "note": "증거 원장. 형식은 docs/operator-guide/RUNBOOK.md §8. PASS는 증거 파일과 verified_by가 모두 있을 때만 인정된다. 이 원장은 실행 로그·산출물만 가리키며, 미실시 항목은 BLOCKED/NOT_TESTED로 남긴다.",
+  "deployment": {
+    "worker_url": "https://project-ai-room.playtray0328.workers.dev",
+    "worker_name": "project-ai-room",
+    "worker_version_id": "3bb6682c-ee36-4dae-967c-36f13bccfcf6",
+    "d1_database": "ai-room-db",
+    "d1_database_id": "483c3df3-3ef1-44f8-a135-65fb7e05eeb3",
+    "d1_migration": "0001_initial.sql applied 2026-11-21T04:53:08Z",
+    "assets": "apps/web/dist (13 files read, 11 uploaded)",
+    "source_commit": "46fd4f1 (local only, no remote)"
+  },
+  "gates": {
+    "G-03": {
+      "status": "BLOCKED",
+      "verified_at": "2026-11-21T05:02:22Z",
+      "verified_by": "Pickle(에이전트) — qa_matrix_runner/verify-release 실행",
+      "evidence": ["docs/evidence/provider-capabilities.md"],
+      "note": "지정 AI 8종의 키·계정이 없다(Q039 blocker 8/8). 실제 다중 AI 협업 시연 불가."
+    },
+    "G-04": {
+      "status": "BLOCKED",
+      "verified_at": "2026-11-21T05:02:22Z",
+      "verified_by": "Pickle(에이전트) — gh/gh api 실행 결과",
+      "evidence": ["docs/evidence/github-blocked.md"],
+      "note": "GitHub 연결에 저장소 생성 권한이 없어 비공개 리포를 만들지 못했다. Run ID·PR 증거 없음."
+    },
+    "G-05": {
+      "status": "PARTIAL",
+      "verified_at": "2026-11-21T05:02:32Z",
+      "verified_by": "Pickle(에이전트) — 원격 HTTP 실측",
+      "evidence": [
+        "docs/evidence/deployment-live.md",
+        "docs/evidence/live/live-probe-20261121T050232Z.txt"
+      ],
+      "note": "홈/포털문서/헬스/인증가드 라이브 200·401 확인. 소유자 계정 미생성으로 로그인·대화·IDE 실사용 시연은 미실시."
+    },
+    "G-06": {
+      "status": "NOT_TESTED",
+      "verified_at": "2026-11-21T05:02:22Z",
+      "verified_by": "Pickle(에이전트) — 산출물 탐색",
+      "evidence": [],
+      "note": "Windows EXE·설치 파일이 아직 없다. build-windows 워크플로 실행(CI) 후 SHA-256과 함께 기록해야 한다."
+    },
+    "G-07": {
+      "status": "PARTIAL",
+      "verified_at": "2026-11-21T05:02:22Z",
+      "verified_by": "Pickle(에이전트) — 로컬 Gradle 빌드 산출물",
+      "evidence": ["docs/evidence/android-local-build.md"],
+      "note": "debug APK와 미서명 release APK 생성·SHA-256 기록. 실기기 설치·실행 시험은 미실시."
+    },
+    "G-10": {
+      "status": "PARTIAL",
+      "verified_at": "2026-11-21T04:53:08Z",
+      "verified_by": "Pickle(에이전트) — wrangler d1 원격 실행",
+      "evidence": ["docs/evidence/deployment-live.md"],
+      "note": "원격 D1에 0001_initial 적용(테이블 97·트리거 26·인덱스 151). PRAGMA integrity_check는 D1이 SQLITE_AUTH로 거부해 로컬 SQLite에서만 확인."
+    },
+    "G-11": {
+      "status": "PARTIAL",
+      "verified_at": "2026-11-21T05:02:22Z",
+      "verified_by": "Pickle(에이전트) — 테스트 실행",
+      "evidence": ["docs/evidence/deployment-live.md"],
+      "note": "유료 AI API 미사용, 비용 0. 다만 실제 사용량 수집·선제 경보는 AI 호출 경로가 없어 미시험."
+    }
+  }
+}

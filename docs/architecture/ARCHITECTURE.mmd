@@ -1,0 +1,16 @@
+flowchart TD
+  C[Web / Windows EXE / Android APK] -->|HTTPS WSS| G[Cloudflare Worker API Gateway]
+  G --> AU[Authentication Authorization]
+  G --> DB[(Cloudflare D1)]
+  G --> OBJ[(Cloudflare R2)]
+  G --> DO[Durable Objects Room and Yjs]
+  G --> ORCH[Task and Agent Orchestration]
+  ORCH --> AD[Official Verified AI Adapters]
+  ORCH --> GH[GitHub App API Webhooks]
+  GH --> CI[GitHub Actions Hosted Runners]
+  CI --> ART[Build and Test Evidence]
+  ART --> OBJ
+  ART --> DB
+  AD --> ORCH
+  GH --> DB
+  DO --> DB

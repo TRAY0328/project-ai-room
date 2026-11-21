@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <!-- 세션·설정 암호문을 백업/기기이전 대상에서 제외한다(Keystore 키는 이전되지 않아 복호화도 불가). -->
+    <cloud-backup>
+        <exclude domain="sharedpref" path="ai_room_secure.xml" />
+        <exclude domain="sharedpref" path="ai_room_client.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="ai_room_secure.xml" />
+        <exclude domain="sharedpref" path="ai_room_client.xml" />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,40 @@
+{
+  "name": "@ai-room/message-blocks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Safe structured message rendering: 25 block types, 108 content features, hand-written HTML sanitiser and a no-innerHTML view tree.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./src/react.tsx",
+      "import": "./src/react.tsx"
+    },
+    "./features": {
+      "types": "./dist/features.d.ts",
+      "import": "./dist/features.js"
+    }
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "peerDependencies": {
+    "react": ">=18.3.1"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "react": "18.3.1",
+    "typescript": "5.9.3"
+  }
+}

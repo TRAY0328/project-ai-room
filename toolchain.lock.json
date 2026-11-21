@@ -1,0 +1,44 @@
+{
+  "schema_version": 2,
+  "verified_at": "2026-11-21",
+  "note": "Versions pinned to what was actually installed, built and deployed in this workspace. 'latest' is not allowed for release builds.",
+  "node": "22.20.0",
+  "npm": "10.9.3",
+  "typescript": "5.9.3",
+  "zod": "4.6.7",
+  "sqlite_local_engine": "node:sqlite (SQLite 3.50.4, bundled with node 22.20.0)",
+  "web": {
+    "react": "18.3.1",
+    "vite": "5.4.21",
+    "vitest": "2.1.9",
+    "monaco-editor": "0.52.2",
+    "yjs": "13.6.20",
+    "built": "2026-11-21, apps/web/dist 13 files (4.5MB), deployed as Workers Assets"
+  },
+  "desktop": {
+    "tauri": "2.12.7",
+    "tauri-build": "2.7.6",
+    "rust": "1.100.0 (pinned in .github/workflows/build-windows.yml; not installed in this workspace)",
+    "target": "x86_64-pc-windows-msvc",
+    "built": "not built here — CI only (build-windows.yml)"
+  },
+  "android": {
+    "gradle": "8.7 (wrapper)",
+    "kotlin": "2.0.21",
+    "jdk": "17",
+    "built": "2026-11-21 local Gradle build: debug APK + unsigned release APK (docs/evidence/android-local-build.md)"
+  },
+  "cloudflare": {
+    "wrangler": "4.166.0 (installed 2026-11-21; previously recorded as not installed)",
+    "worker": "project-ai-room — https://project-ai-room.playtray0328.workers.dev",
+    "worker_version_id": "3bb6682c-ee36-4dae-967c-36f13bccfcf6",
+    "compatibility_date": "2026-11-21",
+    "d1": "ai-room-db (483c3df3-3ef1-44f8-a135-65fb7e05eeb3, WNAM) — 0001_initial applied 2026-11-21T04:53:08Z",
+    "assets": "Workers Assets from apps/web/dist (binding ASSETS, run_worker_first /api/*,/v1/*,/health*)"
+  },
+  "planned_not_yet_available": {
+    "r2": "not enabled on the account (error 10042) — binding intentionally absent",
+    "github_actions": "workflows committed locally but not pushed: Pickle's GitHub connection lacks the 'workflows' write permission",
+    "ai_providers": "no provider API keys — Q039 gate stays BLOCKED_EXTERNAL_DEPENDENCY"
+  }
+}
