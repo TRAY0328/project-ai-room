@@ -33,6 +33,9 @@ jobs:
           node-version: "22.20.0"
           cache: npm
 
+      - name: install (lockfile only)
+        run: npm ci
+
       - name: install gitleaks (pinned version, checksum verified)
         run: |
           set -euo pipefail
