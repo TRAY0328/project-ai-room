@@ -1,0 +1,115 @@
+# 보안 : 비밀 유출 스캔 + 의존성 감사 + 워크플로 정책 검사 + SBOM/라이선스
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 3 * * 1" # 매주 월요일 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: checkout (full history for secret scan)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: setup node (22.20.0)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # actions/setup-node@v7.1.0
+        with:
+          node-version: "22.20.0"
+          cache: npm
+
+      - name: install gitleaks (pinned version, checksum verified)
+        run: |
+          set -euo pipefail
+          VERSION=8.30.1
+          SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks version
+
+      - name: secret scan (git history + working tree)
+        run: |
+          set -euo pipefail
+          # .gitleaks.toml은 기본 규칙을 그대로 쓰고 테스트 픽스처 경로만 허용 목록에 넣는다.
+          # (테스트는 redaction 로직을 검증하려고 키처럼 생긴 가짜 문자열을 쓴다)
+          ./gitleaks detect --no-banner --redact --config .gitleaks.toml --exit-code 1 \
+            --report-format json --report-path gitleaks-report.json
+        # 실패하면 위 단계에서 멈춘다. 발견 내용은 아티팩트로 올린다.
+
+      # 배포되는 런타임 의존성은 0건이어야 한다(차단). 개발 도구(vite/vitest 계열)는
+      # 개발 서버·테스트 실행에만 쓰이며 배포 산출물에 포함되지 않으므로, 발견 내용을
+      # 기록하되 빌드를 실패시키지 않는다. 이 구분은 docs/security/SECURITY_CONTROLS.md에 적는다.
+      - name: dependency audit (production dependencies — blocking)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: dev toolchain advisories (reported, not blocking)
+        run: |
+          set +e
+          npm audit --audit-level=high --json > dev-audit.json 2>&1
+          node -e "
+            const report = require('./dev-audit.json');
+            const rows = Object.entries(report.vulnerabilities ?? {}).map(([name, v]) => ({ name, severity: v.severity, direct: v.isDirect }));
+            console.log('dev-only advisories:', rows.length);
+            for (const row of rows) console.log(' -', row.name, row.severity, row.direct ? '(direct)' : '(transitive)');
+          "
+          exit 0
+
+      - name: workflow policy check
+        run: node .github/workflows/_policy_check.mjs
+
+      - name: SBOM (CycloneDX) + dependency license inventory
+        run: |
+          set -euo pipefail
+          npm sbom --sbom-format=cyclonedx > sbom.cdx.json
+          node -e "
+            const lock = require('./package-lock.json');
+            const rows = [];
+            for (const [path, meta] of Object.entries(lock.packages || {})) {
+              if (!path) continue;
+              rows.push([path.replace(/^node_modules\//, ''), meta.license || 'UNKNOWN']);
+            }
+            rows.sort((a, b) => a[0].localeCompare(b[0]));
+            console.log('package,license');
+            for (const [name, license] of rows) console.log(name + ',' + license);
+          " > dependency-licenses.csv
+          wc -l dependency-licenses.csv sbom.cdx.json
+
+      - name: flag disallowed licenses
+        run: |
+          set -euo pipefail
+          # GPL/AGPL/SSPL 계열은 이 리포지토리(내부 전용)에서도 허용하지 않는다.
+          if grep -Ei ',(A?GPL|SSPL|OSL|EUPL)-?[0-9.]+' dependency-licenses.csv; then
+            echo "허용하지 않는 라이선스가 있다 — 검토 후 사용자 승인 필요"
+            exit 1
+          fi
+          echo "라이선스 검사 통과"
+
+      - name: upload security reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # actions/upload-artifact@v7.0.2
+        with:
+          name: security-reports-${{ github.sha }}
+          path: |
+            gitleaks-report.json
+            sbom.cdx.json
+            dependency-licenses.csv
+            dev-audit.json
+          retention-days: 14
+          if-no-files-found: warn

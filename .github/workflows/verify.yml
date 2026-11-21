@@ -1,0 +1,64 @@
+# PR 최소 허용 경로 — lint → typecheck → 계약 → DB → 단위 → 통합 → 보안 테스트
+# 실행 증거가 없는 상태를 "CI 통과"로 보고하지 않는다. 이 파일은 아직 GitHub에서 실행된 적이 없다
+# (저장소가 원격에 없음). 첫 실행 결과를 docs/evidence에 기록해야 한다.
+name: verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: setup node (22.20.0, npm cache)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # actions/setup-node@v7.1.0
+        with:
+          node-version: "22.20.0"
+          cache: npm
+
+      - name: install (lockfile only)
+        run: npm ci
+
+      - name: typecheck (tsc -b)
+        run: npm run typecheck
+
+      - name: contract cross-check (78 endpoints)
+        run: node scripts/verify-contracts.mjs
+
+      - name: database migration + integrity tests
+        run: npm run test:db
+
+      - name: unit tests
+        run: npm run test:unit
+
+      - name: full verify (typecheck + contracts + unit + integration)
+        run: npm run verify
+
+      - name: security test suite
+        run: node --test tests/security/*.test.mjs
+
+      - name: forbidden-pattern scan
+        run: |
+          set -euo pipefail
+          # 가짜 성공·모킹된 AI 응답·비밀 하드코딩을 CI에서 차단한다.
+          ! grep -RIn --include='*.ts' --include='*.mjs' -E "mockProviderSuccess|fakeAiResponse|sk_live_|cfat_[A-Za-z0-9]{20,}" \
+              packages services apps scripts tests
+          # 클라이언트 코드에 서버 비밀 변수 이름이 복사돼 있지 않은지 확인한다.
+          ! grep -RIn --include='*.kt' --include='*.rs' --include='*.js' -E "PROVIDER_(OPENAI|GEMINI|ANTHROPIC)_API_KEY|CLOUDFLARE_API_TOKEN|SESSION_SIGNING_KEY" \
+              apps/desktop/src-tauri/src apps/android/app/src apps/desktop/ui

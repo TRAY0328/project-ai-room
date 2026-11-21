@@ -1,0 +1,83 @@
+# apps/web 프로덕션 빌드 → 무결성 확인 → SHA-256 → artifact
+name: build-web
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: setup node (22.20.0, npm cache)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # actions/setup-node@v7.1.0
+        with:
+          node-version: "22.20.0"
+          cache: npm
+
+      - name: install (lockfile only)
+        run: npm ci
+
+      - name: require a real build script (no silent pass)
+        run: |
+          node -e "const p=require('./apps/web/package.json'); if(!p.scripts||!p.scripts.build){console.error('apps/web에 build 스크립트가 없다 — 성공으로 처리하지 않는다');process.exit(1)}"
+
+      - name: typecheck web
+        run: npm run typecheck --workspace=@ai-room/web
+
+      - name: build web (production)
+        run: npm run build --workspace=@ai-room/web
+
+      - name: verify build output
+        run: |
+          set -euo pipefail
+          test -f apps/web/dist/index.html
+          files=$(find apps/web/dist -type f | wc -l)
+          echo "dist files: $files"
+          test "$files" -gt 1
+
+      - name: checksums + build metadata
+        run: |
+          set -euo pipefail
+          OUT="$GITHUB_WORKSPACE/artifacts/web"
+          mkdir -p "$OUT"
+          cp -r apps/web/dist "$OUT/dist"
+          ( cd "$OUT/dist" && find . -type f -print0 | sort -z | xargs -0 sha256sum ) > "$OUT/SHA256SUMS.txt"
+          cat > "$OUT/build-info.json" <<JSON
+          {
+            "schema_version": 1,
+            "platform": "web",
+            "commit": "${GITHUB_SHA}",
+            "ref": "${GITHUB_REF}",
+            "run_id": "${GITHUB_RUN_ID}",
+            "node": "$(node -v)",
+            "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "signing": "none — 정적 자산은 서명하지 않음",
+            "verification_status": "BUILT_UNVERIFIED"
+          }
+          JSON
+          echo "artifact files:"
+          find "$OUT" -type f | wc -l
+
+      - name: upload artifact (dist + checksums + metadata)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # actions/upload-artifact@v7.0.2
+        with:
+          name: web-dist-${{ github.sha }}
+          path: artifacts/web
+          retention-days: 14
+          if-no-files-found: error

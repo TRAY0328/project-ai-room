@@ -1,0 +1,119 @@
+# Android : 단위 테스트 + debug APK (항상) / release APK (서명 시크릿이 있을 때만)
+# 시크릿은 PR 빌드에 쓰지 않는다. 서명 키는 실행 중에만 임시 파일로 만들고 즉시 지운다.
+name: build-android
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: setup jdk 17
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # actions/setup-java@v6.3.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: setup android sdk (platform 35, build-tools 35.0.0)
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # android-actions/setup-android@v4.0.4
+        with:
+          packages: "platforms;android-35 build-tools;35.0.0 platform-tools"
+
+      - name: gradle cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('apps/android/**/*.gradle.kts', 'apps/android/gradle/wrapper/gradle-wrapper.properties', 'apps/android/gradle.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: make gradlew executable
+        run: chmod +x apps/android/gradlew
+
+      - name: unit tests + debug APK
+        working-directory: apps/android
+        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest assembleDebug
+
+      - name: release APK (only when signing secrets are present, never on PR)
+        id: release
+        if: ${{ github.event_name != 'pull_request' }}
+        working-directory: apps/android
+        env:
+          KEYSTORE_B64: ${{ secrets.AIROOM_ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.AIROOM_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.AIROOM_ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.AIROOM_ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_B64}" ] || [ -z "${KEYSTORE_PASS}" ] || [ -z "${KEY_ALIAS}" ] || [ -z "${KEY_PASS}" ]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "서명 시크릿이 없어 release APK는 만들지 않는다(debug APK만 배포)."
+            exit 0
+          fi
+          KEYSTORE_PATH="$RUNNER_TEMP/airoom-release.jks"
+          printf '%s' "${KEYSTORE_B64}" | base64 -d > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          export AIROOM_ANDROID_KEYSTORE_PATH="$KEYSTORE_PATH"
+          export AIROOM_ANDROID_KEYSTORE_PASSWORD="${KEYSTORE_PASS}"
+          export AIROOM_ANDROID_KEY_ALIAS="${KEY_ALIAS}"
+          export AIROOM_ANDROID_KEY_PASSWORD="${KEY_PASS}"
+          ./gradlew --no-daemon --stacktrace assembleRelease
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: remove the temporary keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/airoom-release.jks"
+
+      - name: apk metadata + checksums + build info
+        run: |
+          set -euo pipefail
+          OUT="$GITHUB_WORKSPACE/artifacts/android"
+          mkdir -p "$OUT"
+          find apps/android/app/build/outputs/apk -name '*.apk' -exec cp {} "$OUT"/ \;
+          ls -l "$OUT"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -name aapt | sort | tail -1)"
+          for apk in "$OUT"/*.apk; do
+            echo "=== $(basename "$apk") ==="
+            "$AAPT" dump badging "$apk" | head -12 || true
+          done
+          ( cd "$OUT" && find . -name '*.apk' -print0 | sort -z | xargs -0 sha256sum ) > "$OUT/SHA256SUMS.txt"
+          cat > "$OUT/build-info.json" <<JSON
+          {
+            "schema_version": 1,
+            "platform": "android",
+            "commit": "${GITHUB_SHA}",
+            "run_id": "${GITHUB_RUN_ID}",
+            "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "jdk": "$(java -version 2>&1 | head -1)",
+            "release_signed": "${{ steps.release.outputs.signed || 'false' }}",
+            "verification_status": "BUILT_UNVERIFIED"
+          }
+          JSON
+          cat "$OUT/build-info.json"
+
+      - name: upload artifact (APK + checksums)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # actions/upload-artifact@v7.0.2
+        with:
+          name: android-${{ github.sha }}
+          path: artifacts/android
+          retention-days: 14
+          if-no-files-found: error
