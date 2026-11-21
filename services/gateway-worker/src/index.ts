@@ -37,7 +37,7 @@ import {
 } from "@ai-room/permissions";
 import { writeAudit } from "@ai-room/telemetry";
 import type { Env } from "./env.js";
-import { jsonResponse, readJsonBody, requestDigest, successEnvelope, validationError } from "./http.js";
+import { jsonResponse, readJsonBody, requestDigest, successEnvelope, validationError, readCookie, sessionCookies, clearedSessionCookies, SESSION_COOKIE, CSRF_COOKIE } from "./http.js";
 import { BODY_SCHEMAS } from "./schemas.js";
 import { handleExtension } from "./extensions.js";
 import { isEmergencyStopped } from "./domain.js";
@@ -106,6 +106,30 @@ function clientIpHashOf(request: Request): string {
 
 function serviceSubject(): Subject {
   return { kind: "system", id: "service", platformAdmin: false };
+}
+
+/** One-shot CSRF value for the double-submit cookie (readable by the page). */
+function mintCsrfToken(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Session answers also leave as cookies, so the web client keeps a login across
+ * reloads without storing a token in JavaScript. A login/logout/refresh is still
+ * a plain JSON response for non-browser clients.
+ */
+function responseCookies(operationId: string, outcome: HandlerOutcome, url: URL): string[] {
+  const secure = url.protocol === "https:";
+  if (operationId === "post-auth-logout") return clearedSessionCookies({ secure });
+  if (operationId !== "post-auth-login" && operationId !== "post-agents-login" && operationId !== "post-agents-register" && operationId !== "post-auth-refresh") {
+    return [];
+  }
+  const data = outcome.data as { session?: { access_token?: unknown; refresh_token?: unknown; access_expires_at?: unknown; refresh_expires_at?: unknown } } | null;
+  const session = data?.session;
+  if (session === undefined || session === null) return [];
+  return sessionCookies(session, mintCsrfToken(), { secure });
 }
 
 async function resourceFor(
@@ -258,6 +282,10 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   const startedAt = env.NOW_MS ?? Date.now();
   const requestId = requestIdOf(request);
   const url = new URL(request.url);
+  // `/v1/...` is the catalog's own spelling (and what the portal documents); the
+  // deployed base is `/api/v1`. Both reach the same route table so a client that
+  // follows the documentation is not answered with a 404.
+  if (url.pathname.startsWith("/v1/")) url.pathname = `/api${url.pathname}`;
   const now = new Date(startedAt).toISOString();
   const auth = new AuthService(env.DB, env);
   const method = request.method.toUpperCase();
@@ -300,8 +328,31 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       principal = null;
     } else {
       const header = request.headers.get("authorization") ?? "";
-      const bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+      let bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+      // A browser keeps the session in an HttpOnly cookie; an API client uses a
+      // bearer token. Both reach the same authenticator.
+      let viaCookie = false;
+      if (bearer.length === 0) {
+        const cookieToken = readCookie(request.headers.get("cookie"), SESSION_COOKIE);
+        if (cookieToken !== null) {
+          bearer = cookieToken;
+          viaCookie = true;
+        }
+      }
       if (bearer.length === 0) throw new ApiError({ code: "AUTH_REQUIRED", requestId });
+      if (viaCookie && endpoint.mutating) {
+        // Double-submit: the page must echo the readable CSRF cookie in a header.
+        const headerCsrf = request.headers.get("x-csrf-token") ?? "";
+        const cookieCsrf = readCookie(request.headers.get("cookie"), CSRF_COOKIE) ?? "";
+        if (headerCsrf.length === 0 || cookieCsrf.length === 0 || headerCsrf !== cookieCsrf) {
+          throw new ApiError({
+            code: "PERMISSION_DENIED",
+            requestId,
+            message: "CSRF 토큰이 없거나 쿠키와 일치하지 않습니다.",
+            details: { reason_code: "CSRF_TOKEN_INVALID" },
+          });
+        }
+      }
       const authenticated = await auth.authenticate(bearer, requestId);
       principal = await loadPrincipal(env.DB, authenticated);
     }
@@ -440,6 +491,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       outcome.status ?? 200,
       requestId,
       replayed ? { "idempotency-replayed": "true" } : {},
+      responseCookies(endpoint.operationId, outcome, url),
     );
   } catch (error) {
     if (error instanceof ApiError) {

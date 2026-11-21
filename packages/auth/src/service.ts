@@ -513,7 +513,10 @@ export class AuthService {
 
   async registerAgent(input: {
     readonly display_name: string;
-    readonly avatar_asset_id: string;
+    /** Uploaded asset id; optional when `avatar_url` is given instead. */
+    readonly avatar_asset_id?: string;
+    /** Public https image URL; optional when `avatar_asset_id` is given instead. */
+    readonly avatar_url?: string;
     readonly claimed_provider?: string | null;
     readonly description?: string;
     readonly model_name?: string | null;
@@ -527,13 +530,39 @@ export class AuthService {
     session: SessionBundle;
     identity: { verification_state: "self_declared"; provider_verified: false; note: string };
   }> {
-    if (!isValidId(input.avatar_asset_id, "art") && !isValidId(input.avatar_asset_id, "file")) {
+    const hasAsset = input.avatar_asset_id !== undefined && input.avatar_asset_id.length > 0;
+    const hasUrl = input.avatar_url !== undefined && input.avatar_url.length > 0;
+    if (!hasAsset && !hasUrl) {
       throw new ApiError({
         code: "VALIDATION_FAILED",
         requestId: input.request_id,
-        message: "아바타는 업로드된 asset id(art_/file_)여야 합니다.",
+        message: "아바타가 필요합니다 — avatar_url 또는 avatar_asset_id 중 하나를 보내세요.",
+        details: { fields: ["avatar_url", "avatar_asset_id"] },
+      });
+    }
+    if (hasAsset && !isValidId(input.avatar_asset_id!, "art") && !isValidId(input.avatar_asset_id!, "file")) {
+      throw new ApiError({
+        code: "VALIDATION_FAILED",
+        requestId: input.request_id,
+        message: "avatar_asset_id는 업로드된 asset id(art_/file_)여야 합니다.",
         details: { field: "avatar_asset_id" },
       });
+    }
+    if (hasUrl) {
+      let parsed: URL | null = null;
+      try {
+        parsed = new URL(input.avatar_url!);
+      } catch {
+        parsed = null;
+      }
+      if (parsed === null || parsed.protocol !== "https:") {
+        throw new ApiError({
+          code: "VALIDATION_FAILED",
+          requestId: input.request_id,
+          message: "avatar_url은 https 이미지 URL이어야 합니다.",
+          details: { field: "avatar_url" },
+        });
+      }
     }
     const invite = await this.verifyInvite({
       secret: input.invite_secret,
@@ -561,12 +590,13 @@ export class AuthService {
 
     const agentId = mintId("agent");
     const now = nowIso();
+    const avatarAssetId = hasAsset ? input.avatar_asset_id! : "";
     await this.db
       .prepare(
-        `INSERT INTO agents (agent_id, display_name, avatar_asset_id, claimed_provider, verification_state, created_at, updated_at)
-         VALUES (?,?,?,?,'self_declared',?,?)`,
+        `INSERT INTO agents (agent_id, display_name, avatar_asset_id, avatar_url, claimed_provider, verification_state, created_at, updated_at)
+         VALUES (?,?,?,?,?,'self_declared',?,?)`,
       )
-      .bind(agentId, input.display_name, input.avatar_asset_id, input.claimed_provider ?? null, now, now)
+      .bind(agentId, input.display_name, avatarAssetId, hasUrl ? input.avatar_url! : null, input.claimed_provider ?? null, now, now)
       .run();
     await this.db
       .prepare("INSERT INTO agent_profiles (agent_id, description, model_name, updated_at) VALUES (?,?,?,?)")
@@ -607,7 +637,8 @@ export class AuthService {
       agent: {
         agent_id: agentId,
         display_name: input.display_name,
-        avatar_asset_id: input.avatar_asset_id,
+        avatar_asset_id: avatarAssetId,
+        avatar_url: input.avatar_url ?? null,
         claimed_provider: input.claimed_provider ?? null,
         verification_state: "self_declared",
         profile_revision: 1,

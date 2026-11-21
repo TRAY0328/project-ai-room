@@ -109,11 +109,12 @@ export function StartScreen({ navigate }: { navigate: Navigate }) {
 /* -------------------------------------------------------------------- SIGNIN */
 
 export function SignInScreen({ navigate }: { navigate: Navigate }) {
-  const { client, gatewayUrl, setSession, session, connection } = useApp();
+  const { client, gatewayUrl, setSession, session, connection, refreshConnection } = useApp();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const login = useMutation<{ email: string; password: string }, OwnerSessionDto>(client, "POST", "/v1/auth/login");
-  const logout = useMutation<Record<string, never>, { ok: boolean }>(client, "POST", "/v1/auth/logout");
+  const [notice, setNotice] = useState<string | null>(null);
+  const login = useMutation<{ email: string; password: string }, { session?: { access_token?: string; access_expires_at?: string }; owner?: { owner_id?: string; display_name?: string; email?: string } }>(client, "POST", "/v1/auth/login");
+  const logout = useMutation<Record<string, never>, { ok?: boolean }>(client, "POST", "/v1/auth/logout");
 
   return (
     <div className="air-screen" style={{ maxWidth: 720 }}>
@@ -128,8 +129,21 @@ export function SignInScreen({ navigate }: { navigate: Navigate }) {
               e.preventDefault();
               const res = await login.run({ email, password });
               if (res.ok) {
-                setSession(res.data);
+                // The server answers { session, owner } and sets the session cookies;
+                // the screen shows the owner, the cookie carries the authority.
+                const owner = res.data.owner ?? {};
+                setSession({
+                  owner_id: owner.owner_id ?? "owner",
+                  display_name: owner.display_name ?? email,
+                  ...(owner.email === undefined ? {} : { email: owner.email }),
+                  role: "owner",
+                  ...(res.data.session?.access_expires_at === undefined ? {} : { csrf_expires_at: res.data.session.access_expires_at }),
+                });
+                setNotice("로그인되었습니다 — 세션 쿠키가 설정되어 새로고침해도 유지됩니다.");
                 setPassword("");
+                await refreshConnection();
+              } else {
+                setNotice(null);
               }
             }}
           >
@@ -141,7 +155,7 @@ export function SignInScreen({ navigate }: { navigate: Navigate }) {
             </Field>
             <Button type="submit" variant="primary" icon="lock" busy={login.busy} disabled={!gatewayUrl || !email || !password}>로그인</Button>
             {login.result && !login.result.ok ? <Banner tone="danger" icon="warning">{login.result.code}: {login.result.message}</Banner> : null}
-            {login.result && login.result.ok ? <Banner tone="info" icon="check">로그인됨 — 세션 쿠키가 설정되었습니다.</Banner> : null}
+            {login.result && login.result.ok && notice ? <Banner tone="info" icon="check">{notice}</Banner> : null}
           </form>
         </Card>
         <Card pad="md">
@@ -164,7 +178,10 @@ export function SignInScreen({ navigate }: { navigate: Navigate }) {
                 ))}
                 <Button size="sm" icon="lock" onClick={async () => {
                   const res = await logout.run({} as never);
-                  if (res.ok) setSession(null);
+                  if (res.ok) {
+                    setSession(null);
+                    await refreshConnection();
+                  }
                 }}>로그아웃</Button>
               </>
             ) : (
@@ -194,13 +211,35 @@ interface RegisteredAgent {
   rekey_of?: string;
 }
 
+/** The register response nests the identity, the one-time key and the session. */
+interface RegisterResponse {
+  agent?: { agent_id?: string; display_name?: string; avatar_url?: string | null };
+  credential?: { agent_key?: string; key_prefix?: string };
+  session?: { access_token?: string };
+  identity?: { verification_state?: string };
+}
+
+interface AgentLoginResponse {
+  agent_id?: string;
+  session?: { access_token?: string };
+}
+
+function registeredFrom(response: RegisterResponse, fallbackName: string): RegisteredAgent {
+  return {
+    agent_id: response.agent?.agent_id ?? "",
+    api_key: response.credential?.agent_key,
+    display_name: response.agent?.display_name ?? fallbackName,
+    attestation: "self_declared",
+  };
+}
+
 const NEXT_STEPS = [
-  { method: "GET", path: "/v1/rooms", note: "권한 있는 방 목록" },
-  { method: "GET", path: "/v1/rooms/{roomId}/messages", note: "커서 기반 메시지 조회" },
-  { method: "POST", path: "/v1/rooms/{roomId}/messages", note: "구조화 blocks[] 전송" },
-  { method: "GET", path: "/v1/projects", note: "프로젝트 대시보드" },
-  { method: "GET", path: "/v1/projects/{projectId}/tasks", note: "의존성 포함 작업" },
-  { method: "POST", path: "/v1/projects/{projectId}/tasks/{taskId}/claim", note: "작업 인수(lease)" },
+  { method: "GET", path: "/api/v1/rooms", note: "권한 있는 방 목록" },
+  { method: "GET", path: "/api/v1/rooms/{roomId}/messages", note: "커서 기반 메시지 조회" },
+  { method: "POST", path: "/api/v1/rooms/{roomId}/messages", note: "구조화 blocks[] 전송" },
+  { method: "GET", path: "/api/v1/projects", note: "프로젝트 대시보드" },
+  { method: "GET", path: "/api/v1/projects/{projectId}/tasks", note: "의존성 포함 작업" },
+  { method: "POST", path: "/api/v1/tasks/{taskId}/claim-proposals", note: "작업 인수(lease) 제안" },
 ];
 
 /**
@@ -224,11 +263,11 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
   const [showKeyOnce, setShowKeyOnce] = useState(true);
 
   const register = useMutation<
-    { invite_secret: string; display_name: string; avatar_url: string; provider_claim: string; provider_verified: boolean; bio: string },
-    RegisteredAgent
+    { invite_secret: string; display_name: string; avatar_asset_id?: string; avatar_url: string; provider_claim: string; bio: string },
+    RegisterResponse
   >(client, "POST", "/v1/agents/register");
-  const login = useMutation<{ api_key: string }, RegisteredAgent>(client, "POST", "/v1/agents/login");
-  const rekey = useMutation<{ api_key: string }, RegisteredAgent>(client, "POST", "/v1/agents/rekey");
+  const login = useMutation<{ agent_key: string }, AgentLoginResponse>(client, "POST", "/v1/agents/login");
+  const rekey = useMutation<Record<string, never>, { credential?: { agent_key?: string }; agent_id?: string; notice?: string }>(client, "POST", "/v1/agents/rekey");
 
   const agents = useResource<AgentSummary[]>(client, "/v1/agents", { enabled: Boolean(gatewayUrl) && !demoMode });
   const agentList = demoMode ? demoAgents : agents.state.kind === "ready" ? agents.state.data : [];
@@ -277,12 +316,13 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
                       invite_secret: invite,
                       display_name: name,
                       avatar_url: avatar,
-                      provider_claim: provider,
-                      provider_verified: claim,
-                      bio: profile,
+                      // `provider_claim` is a typed name, never a badge: the server
+                      // ignores any attempt to set verification here.
+                      ...(provider === "" ? {} : { provider_claim: provider }),
+                      ...(profile.trim() === "" ? {} : { bio: profile }),
                     });
                     if (res.ok) {
-                      setIssued(res.data);
+                      setIssued(registeredFrom(res.data, name));
                       setShowKeyOnce(true);
                     }
                   }}
@@ -310,9 +350,10 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
                     </Select>
                   </Field>
                   <Checkbox
-                    label="공급자 공식 검증을 완료했습니다"
-                    description="체크만으로 verified가 되지 않습니다 — 연결 검사에서 증거가 있어야 VERIFIED로 표시됩니다."
+                    label="이 화면에서는 공급자 검증 배지를 받을 수 없습니다"
+                    description="이름을 'ChatGPT'로 써도 자체신고로만 표시됩니다. 공급자 검증은 연결 검사에서 증거로만 올라갑니다."
                     checked={claim}
+                    disabled
                     onChange={(e) => setClaim(e.target.checked)}
                   />
                   <Button type="submit" variant="primary" icon="key" busy={register.busy} disabled={!gatewayUrl || demoMode || !invite || !name || !avatar}>등록하고 키 받기</Button>
@@ -325,8 +366,8 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
                   style={{ display: "grid", gap: 10 }}
                   onSubmit={async (e) => {
                     e.preventDefault();
-                    const res = await login.run({ api_key: apiKey });
-                    if (res.ok) setIssued(res.data);
+                    const res = await login.run({ agent_key: apiKey });
+                    if (res.ok) setIssued({ agent_id: res.data.agent_id ?? "", display_name: name || res.data.agent_id || "AI", attestation: "self_declared" });
                   }}
                 >
                   <Field label="AI API 키" htmlFor="ai-key" required hint="서버에는 해시만 저장됩니다. URL에 절대 넣지 마세요.">
@@ -343,11 +384,13 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
                   style={{ display: "grid", gap: 10 }}
                   onSubmit={async (e) => {
                     e.preventDefault();
-                    const res = await rekey.run({ api_key: apiKey });
-                    if (res.ok) setIssued(res.data);
+                    const res = await rekey.run({} as never);
+                    if (res.ok) {
+                      setIssued({ agent_id: res.data.agent_id ?? issued?.agent_id ?? "", api_key: res.data.credential?.agent_key, display_name: issued?.display_name ?? "AI", attestation: "self_declared", rekey_of: issued?.agent_id });
+                    }
                   }}
                 >
-                  <Field label="기존 키" htmlFor="rekey-key" required hint="회전하면 기존 키는 즉시 무효화됩니다">
+                  <Field label="현재 키로 회전" htmlFor="rekey-key" required hint="이 키로 인증한 뒤 새 키를 발급합니다. 기존 키는 즉시 무효화됩니다">
                     <TextInput id="rekey-key" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} required />
                   </Field>
                   <Button type="submit" variant="primary" icon="refresh" busy={rekey.busy} disabled={!gatewayUrl || demoMode || !apiKey}>키 회전</Button>

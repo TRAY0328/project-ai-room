@@ -29,6 +29,16 @@ export function Shell({ screen, params, navigate, notifications, children }: She
   const [paletteOpen, setPaletteOpen] = useState(false);
   const isMobile = breakpoint === "xs" || breakpoint === "sm" || breakpoint === "md";
 
+  // A navigation landed on another screen, or the window grew past the drawer
+  // breakpoint: either way the overlay drawer has done its job.
+  useEffect(() => {
+    setNavOpen(false);
+  }, [screen.id]);
+
+  useEffect(() => {
+    if (!isMobile) setNavOpen(false);
+  }, [isMobile]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -47,15 +57,6 @@ export function Shell({ screen, params, navigate, notifications, children }: She
       setPaletteOpen(false);
     },
     [navigate, params],
-  );
-
-  const nav = useMemo(
-    () =>
-      NAV_GROUPS.map((group) => ({
-        group,
-        items: SCREENS.filter((s) => s.group === group),
-      })),
-    [],
   );
 
   const counts: Partial<Record<ScreenId, number>> = {
@@ -82,30 +83,7 @@ export function Shell({ screen, params, navigate, notifications, children }: She
             </div>
           </button>
           <div className="air-nav">
-            {nav.map(({ group, items }) => (
-              <div key={group}>
-                <div className="air-nav-group-label">{group}</div>
-                {items.map((item) => (
-                  <a
-                    key={item.id}
-                    className="air-nav-item"
-                    href={`#${item.path.replace(/:id/g, params.id ?? "demo-project")}`}
-                    aria-current={item.id === screen.id ? "page" : undefined}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      go(item.id);
-                    }}
-                    title={item.ownerOnly ? `${item.title} · OWNER ONLY` : item.title}
-                    data-testid={`nav-${item.id}`}
-                  >
-                    <Icon name={item.icon} size={15} />
-                    <span className="air-truncate" style={{ flex: 1 }}>{item.title}</span>
-                    {item.ownerOnly ? <Icon name="lock" size={11} style={{ opacity: 0.55 }} /> : null}
-                    {counts[item.id] ? <span className="air-nav-count">{counts[item.id]}</span> : null}
-                  </a>
-                ))}
-              </div>
-            ))}
+            <NavList screenId={screen.id} params={params} go={go} counts={counts} testId />
           </div>
         </div>
         <div />
@@ -127,8 +105,10 @@ export function Shell({ screen, params, navigate, notifications, children }: She
 
       <div className="air-main">
         <header className="air-topbar">
-          {isMobile ? <IconButton icon="menu" label="메뉴 열기" onClick={() => setNavOpen(true)} /> : null}
-          <div style={{ minWidth: 0 }}>
+          {isMobile ? (
+            <IconButton icon="menu" label="메뉴 열기" aria-expanded={navOpen} aria-controls="air-mobile-nav" onClick={() => setNavOpen(true)} />
+          ) : null}
+          <div className="air-topbar-heading">
             <div className="air-topbar-title air-truncate">{screen.title}</div>
             <div className="air-topbar-sub air-truncate">{screen.subtitle}</div>
           </div>
@@ -138,10 +118,12 @@ export function Shell({ screen, params, navigate, notifications, children }: She
             <span className="air-truncate" style={{ flex: 1, textAlign: "left" }}>화면·기능 검색</span>
             <Kbd>⌘K</Kbd>
           </button>
-          {demoMode ? <Badge tone="warn" icon="sparkles" title="데모 데이터 표시 중 — 서버 데이터가 아닙니다">DEMO</Badge> : null}
-          <button type="button" className="air-btn" data-size="sm" data-variant="ghost" onClick={() => setDemoMode(!demoMode)} title="서버 없이 화면을 살펴보는 시연 모드">
-            <Icon name="eye" size={13} /> {demoMode ? "데모 끄기" : "데모"}
-          </button>
+          <span className="air-topbar-extra" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            {demoMode ? <Badge tone="warn" icon="sparkles" title="데모 데이터 표시 중 — 서버 데이터가 아닙니다">DEMO</Badge> : null}
+            <button type="button" className="air-btn" data-size="sm" data-variant="ghost" onClick={() => setDemoMode(!demoMode)} title="서버 없이 화면을 살펴보는 시연 모드">
+              <Icon name="eye" size={13} /> {demoMode ? "데모 끄기" : "데모"}
+            </button>
+          </span>
           <span style={{ position: "relative" }}>
             <IconButton icon="bell" label={`알림 ${notifications}건`} onClick={() => go("ALERTS")} />
             {notifications > 0 ? (
@@ -160,28 +142,94 @@ export function Shell({ screen, params, navigate, notifications, children }: She
         </main>
       </div>
 
-      <Drawer open={navOpen} onClose={() => setNavOpen(false)} title="화면">
-        <div style={{ padding: 8 }}>
-          {SCREENS.map((item) => (
-            <a
-              key={item.id}
+      <Drawer
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
+        title="화면"
+        footer={
+          <div className="air-sidebar-foot" style={{ borderTop: "1px solid var(--air-line)" }}>
+            <button
+              type="button"
               className="air-nav-item"
-              href={`#${item.path.replace(/:id/g, params.id ?? "demo-project")}`}
-              aria-current={item.id === screen.id ? "page" : undefined}
-              onClick={(e) => {
-                e.preventDefault();
-                go(item.id);
-              }}
+              onClick={() => void refreshConnection()}
+              style={{ width: "100%", background: "none", border: "1px solid transparent", textAlign: "left" }}
             >
-              <Icon name={item.icon} size={15} />
-              <span className="air-truncate">{item.title}</span>
-            </a>
-          ))}
+              <LiveIndicator state={connection.state === "ready" ? "online" : connection.state === "checking" ? "connecting" : connection.state === "unreachable" ? "error" : "offline"} />
+              <span className="air-hint air-truncate" style={{ flex: 1 }}>{connection.detail}</span>
+            </button>
+            <button type="button" className="air-nav-item" onClick={() => go("ADMIN")} style={{ width: "100%", background: "none", textAlign: "left" }}>
+              <Icon name="server" size={14} />
+              <span className={gatewayUrl ? "air-truncate" : "air-truncate air-hint"} style={{ flex: 1 }}>{gatewayUrl ? new URL(gatewayUrl).host : "게이트웨이 미설정"}</span>
+            </button>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <Button size="sm" block variant={demoMode ? "primary" : "ghost"} icon="eye" onClick={() => setDemoMode(!demoMode)}>
+                {demoMode ? "데모 끄기" : "데모 데이터"}
+              </Button>
+              <IconButton icon={theme === "dark" ? "sun" : "moon"} label={theme === "dark" ? "라이트 테마" : "다크 테마"} onClick={toggle} />
+            </div>
+          </div>
+        }
+      >
+        <div id="air-mobile-nav" style={{ padding: 8 }}>
+          <NavList screenId={screen.id} params={params} go={go} counts={counts} />
         </div>
       </Drawer>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onPick={(id) => go(id)} />
     </div>
+  );
+}
+
+/* ------------------------------------------------------------- nav list */
+
+/**
+ * The one navigation list: the desktop sidebar and the phone drawer render the
+ * same groups and items, so a screen never exists in only one of them.
+ */
+function NavList({
+  screenId,
+  params,
+  go,
+  counts,
+  testId,
+}: {
+  screenId: ScreenId;
+  params: Record<string, string>;
+  go: (id: ScreenId | "HOME", extra?: Record<string, string>) => void;
+  counts: Partial<Record<ScreenId, number>>;
+  testId?: boolean;
+}) {
+  return (
+    <>
+      {NAV_GROUPS.map((group) => {
+        const items = SCREENS.filter((s) => s.group === group);
+        if (items.length === 0) return null;
+        return (
+          <div key={group}>
+            <div className="air-nav-group-label">{group}</div>
+            {items.map((item) => (
+              <a
+                key={item.id}
+                className="air-nav-item"
+                href={`#${item.path.replace(/:id/g, params.id ?? "demo-project")}`}
+                aria-current={item.id === screenId ? "page" : undefined}
+                onClick={(e) => {
+                  e.preventDefault();
+                  go(item.id);
+                }}
+                title={item.ownerOnly ? `${item.title} · OWNER ONLY` : item.title}
+                data-testid={testId ? `nav-${item.id}` : undefined}
+              >
+                <Icon name={item.icon} size={15} />
+                <span className="air-truncate" style={{ flex: 1 }}>{item.title}</span>
+                {item.ownerOnly ? <Icon name="lock" size={11} style={{ opacity: 0.55 }} /> : null}
+                {counts[item.id] ? <span className="air-nav-count">{counts[item.id]}</span> : null}
+              </a>
+            ))}
+          </div>
+        );
+      })}
+    </>
   );
 }
 

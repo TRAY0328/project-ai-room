@@ -271,6 +271,7 @@ export function DebugScreen() {
       </Banner>
       <Card>
         <SectionHeader title="지원 매트릭스" sub="언어·러너별 실제 지원" />
+        <div className="air-table-wrap">
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }} aria-label="디버깅 지원 매트릭스">
           <thead><tr>{["언어", "브레이크포인트", "변수 조회", "스택/로그", "재현 테스트"].map((h) => <th key={h} scope="col" style={{ textAlign: "left", padding: "6px 10px", borderBottom: "1px solid var(--air-line)", color: "var(--air-text-muted)" }}>{h}</th>)}</tr></thead>
           <tbody>
@@ -285,6 +286,7 @@ export function DebugScreen() {
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
       <Section title="최근 실패 분석" sub="로그에서 추출한 스택 (데모)">
         {demoMode ? (

@@ -126,11 +126,32 @@ export const identityHandlers: Record<string, Handler> = {
       // Registration is for AI identities; the owner already exists.
       throw new ApiError({ code: "PERMISSION_DENIED", requestId: ctx.requestId, details: { reason_code: "DEFAULT_DENY" } });
     }
+    // A typed provider name is a claim, never a verification: `true` here would
+    // be a self-granted badge, so it is refused instead of silently ignored.
+    if (ctx.body["provider_verified"] === true) {
+      throw new ApiError({
+        code: "VALIDATION_FAILED",
+        requestId: ctx.requestId,
+        message: "provider_verified는 스스로 설정할 수 없습니다. 공급자 검증은 /v1/providers/{provider}/verify 증거로만 올라갑니다.",
+        details: { field: "provider_verified" },
+      });
+    }
+    const avatarAssetId = typeof ctx.body["avatar_asset_id"] === "string" && ctx.body["avatar_asset_id"].length > 0 ? ctx.body["avatar_asset_id"] : undefined;
+    const avatarUrl = typeof ctx.body["avatar_url"] === "string" && ctx.body["avatar_url"].length > 0 ? ctx.body["avatar_url"] : undefined;
+    if (avatarAssetId === undefined && avatarUrl === undefined) {
+      throw new ApiError({
+        code: "VALIDATION_FAILED",
+        requestId: ctx.requestId,
+        message: "아바타가 필요합니다 — avatar_url(https 이미지 URL) 또는 avatar_asset_id 중 하나를 보내세요.",
+        details: { fields: ["avatar_url", "avatar_asset_id"] },
+      });
+    }
     const result = await ctx.auth.registerAgent({
       display_name: String(ctx.body["display_name"]),
-      avatar_asset_id: String(ctx.body["avatar_asset_id"]),
-      claimed_provider: optionalString(ctx.body, "claimed_provider"),
-      description: typeof ctx.body["description"] === "string" ? ctx.body["description"] : "",
+      ...(avatarAssetId === undefined ? {} : { avatar_asset_id: avatarAssetId }),
+      ...(avatarUrl === undefined ? {} : { avatar_url: avatarUrl }),
+      claimed_provider: optionalString(ctx.body, "provider_claim") ?? optionalString(ctx.body, "claimed_provider"),
+      description: typeof ctx.body["bio"] === "string" ? ctx.body["bio"] : typeof ctx.body["description"] === "string" ? ctx.body["description"] : "",
       model_name: optionalString(ctx.body, "model_name"),
       invite_secret: String(ctx.body["invite_secret"]),
       request_id: ctx.requestId,
@@ -167,6 +188,7 @@ export const identityHandlers: Record<string, Handler> = {
       agent_id: string;
       display_name: string;
       avatar_asset_id: string;
+      avatar_url: string | null;
       claimed_provider: string | null;
       verification_state: string;
       created_at: string;
@@ -175,7 +197,7 @@ export const identityHandlers: Record<string, Handler> = {
       description: string;
     }>(
       ctx.db,
-      `SELECT a.agent_id, a.display_name, a.avatar_asset_id, a.claimed_provider, a.verification_state,
+      `SELECT a.agent_id, a.display_name, a.avatar_asset_id, a.avatar_url, a.claimed_provider, a.verification_state,
               a.created_at, a.disabled_at, p.model_name, p.description
        FROM agents a LEFT JOIN agent_profiles p ON p.agent_id = a.agent_id
        ORDER BY a.created_at ASC`,
@@ -187,6 +209,7 @@ export const identityHandlers: Record<string, Handler> = {
           agent_id: row.agent_id,
           display_name: row.display_name,
           avatar_asset_id: row.avatar_asset_id,
+          avatar_url: row.avatar_url,
           claimed_provider: row.claimed_provider,
           /** Typed name vs. proof are separate fields on purpose (spec 06.3). */
           claimed_provider_state: "self_declared",
@@ -208,6 +231,7 @@ export const identityHandlers: Record<string, Handler> = {
       agent_id: string;
       display_name: string;
       avatar_asset_id: string;
+      avatar_url: string | null;
       claimed_provider: string | null;
       verification_state: string;
       created_at: string;
@@ -219,7 +243,7 @@ export const identityHandlers: Record<string, Handler> = {
       profile_revision: number;
     }>(
       ctx.db,
-      `SELECT a.agent_id, a.display_name, a.avatar_asset_id, a.claimed_provider, a.verification_state,
+      `SELECT a.agent_id, a.display_name, a.avatar_asset_id, a.avatar_url, a.claimed_provider, a.verification_state,
               a.created_at, a.disabled_at, a.profile_revision, p.model_name, p.description, p.company, p.pronouns
        FROM agents a LEFT JOIN agent_profiles p ON p.agent_id = a.agent_id WHERE a.agent_id = ?`,
       agentId,
@@ -241,6 +265,7 @@ export const identityHandlers: Record<string, Handler> = {
         agent_id: row.agent_id,
         display_name: row.display_name,
         avatar_asset_id: row.avatar_asset_id,
+        avatar_url: row.avatar_url,
         claimed_provider: row.claimed_provider,
         verification_state: row.verification_state,
         identity_verified: row.verification_state === "provider_verified",

@@ -59,7 +59,13 @@ function requireR2(ctx: Parameters<Handler>[0]) {
 function extractPlainText(blocks: readonly { block_type: string; payload: Record<string, unknown> }[]): string {
   return blocks
     .filter((block) => block.block_type === "text" || block.block_type === "markdown" || block.block_type === "quote" || block.block_type === "code")
-    .map((block) => (typeof block.payload["text"] === "string" ? block.payload["text"] : ""))
+    .map((block) => {
+      // The client block model puts a markdown body under `markdown`; a plain or
+      // quoted one under `text`. Both are the same idea: the readable body.
+      if (typeof block.payload["text"] === "string") return block.payload["text"];
+      if (typeof block.payload["markdown"] === "string") return block.payload["markdown"];
+      return "";
+    })
     .filter((text) => text.length > 0)
     .join("\n")
     .slice(0, 100_000);
@@ -294,7 +300,19 @@ export const chatHandlers: Record<string, Handler> = {
     const subject = ctx.principal.subject;
     const authorKind = subject.kind === "owner" ? "owner" : "agent";
     const blocks = ctx.body["blocks"] as { block_id: string; block_type: string; payload: Record<string, unknown> }[];
-    const idempotencyKey = String(ctx.body["idempotency_key"]);
+    // The Idempotency-Key header is the documented spelling; the body field is
+    // accepted for clients that only send a JSON body.
+    const idempotencyKey = typeof ctx.body["idempotency_key"] === "string" && ctx.body["idempotency_key"].length > 0
+      ? String(ctx.body["idempotency_key"])
+      : (ctx.headers.get("idempotency-key") ?? "");
+    if (idempotencyKey.length < 8) {
+      throw new ApiError({
+        code: "VALIDATION_FAILED",
+        requestId: ctx.requestId,
+        message: "Idempotency-Key 헤더(8자 이상)가 필요합니다.",
+        details: { header: "idempotency-key" },
+      });
+    }
     const bodyText = typeof ctx.body["body_plain_text"] === "string" && ctx.body["body_plain_text"].length > 0
       ? ctx.body["body_plain_text"]
       : extractPlainText(blocks);

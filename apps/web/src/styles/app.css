@@ -5,6 +5,8 @@
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
   height: 100vh;
+  /* Mobile browsers shrink the visible area with their toolbars; 100dvh tracks it. */
+  height: 100dvh;
   overflow: hidden;
   background: var(--air-bg);
 }
@@ -120,6 +122,10 @@
 
 .air-main {
   display: grid;
+  /* One explicit column keeps the implicit one from sizing to max-content:
+     without it a wide toolbar or message made every screen 650px+ wide inside
+     a 390px phone viewport, which .air-app then clipped. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
@@ -128,6 +134,8 @@
 .air-topbar {
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
+  min-width: 0;
   gap: 10px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--air-line);
@@ -138,6 +146,7 @@
   z-index: 10;
 }
 
+.air-topbar-heading { min-width: 0; flex: 1 1 auto; }
 .air-topbar-title { font-size: 13.5px; font-weight: 650; }
 .air-topbar-sub { font-size: 11.5px; color: var(--air-text-muted); }
 
@@ -160,7 +169,11 @@
 
 .air-main-scroll {
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
   min-height: 0;
+  min-width: 0;
   padding: 18px;
   scroll-behavior: smooth;
 }
@@ -175,6 +188,17 @@
 .air-grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 .air-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .air-grid-auto { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+
+/* Web IDE: file tree · editor · side panel. Collapses to one column on a phone
+   (see the mobile block at the end of this file). */
+.air-ide-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 300px;
+  gap: 10px;
+  min-height: 0;
+  min-width: 0;
+  align-items: start;
+}
 
 /* ------------------------------------------------------------------- chat */
 
@@ -639,22 +663,71 @@
 /* --------------------------------------------------------------- mobile */
 
 @media (max-width: 1023px) {
-  .air-app { grid-template-columns: minmax(0, 1fr); }
+  .air-app,
   .air-app[data-sidebar="collapsed"] { grid-template-columns: minmax(0, 1fr); }
+  /* The sidebar becomes an overlay drawer opened from the topbar (Shell.tsx). */
   .air-sidebar { display: none; }
   .air-main-scroll { padding: 12px; }
   .air-grid-2, .air-grid-3 { grid-template-columns: minmax(0, 1fr); }
-  .air-chat { grid-template-columns: minmax(0, 1fr); }
-  .air-chat[data-thread="open"] { grid-template-columns: minmax(0, 1fr); }
+  .air-chat, .air-chat[data-thread="open"] { grid-template-columns: minmax(0, 1fr); }
   .air-chat-rooms { display: none; }
   .mb-beforeafter { grid-template-columns: 1fr; }
+  .air-ide-layout { grid-template-columns: minmax(0, 1fr); }
+  .air-kanban { grid-auto-columns: minmax(78%, 1fr); }
+}
+
+@media (max-width: 768px) {
+  /* Touch-sized controls: a 26px button is a miss target on a phone. */
+  .air-btn { min-height: 38px; padding: 8px 13px; }
+  .air-btn[data-size="sm"] { min-height: 34px; padding: 6px 11px; font-size: 12.5px; }
+  .air-btn[data-size="lg"] { min-height: 46px; }
+  .air-nav-item { padding: 10px 11px; font-size: 13.5px; }
+  .air-tab { padding: 11px 13px; }
+  /* iOS zooms a page when a focused field is under 16px. */
+  .air-input, .air-select, .air-textarea, .air-composer-box textarea, .air-searchbox input { font-size: 16px; }
+  .air-textarea { min-height: 96px; }
+
+  .air-banner { flex-wrap: wrap; padding: 10px 12px; }
+  .air-banner > div { min-width: 0; flex: 1 1 160px; }
+  .air-banner > .air-btn, .air-banner > a.air-btn { flex: 0 0 auto; margin-left: auto; }
+
+  .air-dialog { max-height: min(88dvh, 760px); }
+  .air-scrim { padding: 10px; }
+
+  .air-composer { padding: 8px 10px calc(10px + env(safe-area-inset-bottom)); }
+  /* The phone chat scrolls with the page, so the composer rides the bottom edge
+     instead of sitting below the whole message history. */
+  .air-chat-screen { height: auto !important; }
+  .air-composer {
+    position: sticky;
+    bottom: 0;
+    z-index: 6;
+    box-shadow: 0 -10px 20px -18px var(--air-shadow);
+  }
+  .air-chat-scroll { padding: 10px; }
+  .air-msg { padding: 8px 4px 8px 0; }
+
+  /* The full tables get a horizontal scroller instead of squeezing columns. */
+  .air-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .air-table-wrap > table { min-width: 520px; }
+
+  .air-kv { grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
+  .air-kv dd { margin-bottom: 8px; }
 }
 
 @media (max-width: 640px) {
   .air-topbar { padding: 8px 10px; gap: 6px; }
-  .air-searchbox { min-width: 0; flex: 1; }
+  .air-topbar-sub { display: none; }
+  .air-topbar-title { font-size: 14px; }
+  /* Search keeps its icon only; the label and ⌘K hint are desktop furniture. */
+  .air-searchbox { min-width: 0; flex: 0 0 auto; width: 34px; padding: 6px; justify-content: center; }
+  .air-searchbox > span, .air-searchbox .air-kbd { display: none; }
+  /* Demo switch and gateway live in the drawer on a phone. */
+  .air-topbar-extra { display: none; }
   .air-screen-title { font-size: 16px; }
-  .air-chat-scroll { padding: 10px; }
+  .air-main-scroll { padding: 10px; }
+  .air-chat-scroll { padding: 10px 10px 0; }
+  .air-toasts { left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); max-width: none; }
 }
 
 /* ========================================================== landing (/) ==
@@ -664,6 +737,7 @@
 
 .lp {
   min-height: 100vh;
+  min-height: 100dvh;
   background:
     radial-gradient(1200px 600px at 80% -10%, color-mix(in srgb, var(--air-accent) 12%, transparent), transparent 60%),
     var(--air-bg);
@@ -784,6 +858,7 @@
   line-height: 1.75;
   color: var(--air-text-muted);
   max-width: 60ch;
+  overflow-wrap: anywhere;
 }
 
 .lp-cta-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -794,7 +869,10 @@
   gap: 8px;
   flex-wrap: wrap;
   font-size: 12px;
+  min-width: 0;
 }
+
+.lp-gateway .air-code-inline { max-width: 100%; overflow-wrap: anywhere; }
 
 .lp-stats {
   display: grid;
@@ -965,6 +1043,7 @@
   border: 1px solid var(--air-line);
   border-radius: 10px;
   overflow: hidden;
+  max-width: 100%;
   background: var(--air-code-bg);
 }
 
@@ -985,7 +1064,9 @@
   padding: 10px 12px;
   font-size: 11.5px;
   line-height: 1.6;
+  max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   color: var(--air-text);
 }
 
@@ -1045,19 +1126,45 @@
 
 @media (max-width: 960px) {
   .lp-hero { grid-template-columns: minmax(0, 1fr); }
-  .lp-hero-art { min-height: 300px; order: -1; }
+  /* The preview cards follow the copy on a narrow screen, never lead it. */
+  .lp-hero-art { min-height: 300px; order: 0; }
   .lp-nav-links { display: none; }
   .lp-card { width: min(320px, 92%); }
   .lp-card-approval { right: 2%; }
 }
 
 @media (max-width: 640px) {
+  .lp-nav { flex-wrap: nowrap; gap: 8px; padding: 10px 14px; }
+  .lp-brand { min-width: 0; flex: 1 1 auto; }
+  .lp-brand > span:last-child { min-width: 0; }
+  .lp-brand strong { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lp-brand small { display: none; }
+  .lp-nav-cta { width: auto; margin-left: auto; flex: 0 0 auto; gap: 4px; }
+  .lp-nav-cta .air-btn { flex: 0 0 auto; }
+
+  .lp-hero { gap: 18px; padding-top: 28px; }
+  .lp-title { font-size: clamp(26px, 8.4vw, 34px); }
+  .lp-eyebrow { font-size: 11px; }
+  .lp-cta-row { gap: 6px; }
+  .lp-cta-row .air-btn { flex: 1 1 100%; }
+
   .lp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .lp-nav { flex-wrap: wrap; gap: 8px; }
-  .lp-nav-cta { width: 100%; }
-  .lp-nav-cta .air-btn { flex: 1; }
-  .lp-step { grid-template-columns: 28px minmax(0, 1fr); }
-  .lp-hero-art { display: none; }
+  .lp-grid, .lp-owner-grid { grid-template-columns: minmax(0, 1fr); }
+  .lp-section { padding: 30px 16px; gap: 14px; }
+
+  /* Preview cards stack under the hero copy instead of floating out of a box. */
+  .lp-hero-art {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    min-height: 0;
+  }
+  .lp-card { position: static; width: 100%; }
+  .lp-float-a, .lp-float-b, .lp-float-c { animation: none; }
+
+  .lp-step { grid-template-columns: 28px minmax(0, 1fr); padding: 14px 12px; }
+  .lp-footer { padding: 16px 14px 22px; }
+  .lp-final { padding: 32px 16px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

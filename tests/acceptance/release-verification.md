@@ -1,6 +1,6 @@
 # 릴리스 게이트 검증 결과 (자동 생성)
 
-- 실행: 2026-11-21T05:56:43.796Z
+- 실행: 2026-11-21T06:05:26.852Z
 - 판정: **INCOMPLETE**
 - 증거 원장: docs/evidence/release-evidence.json
 

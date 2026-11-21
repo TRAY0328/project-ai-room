@@ -147,7 +147,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateRows: "auto 1fr", height: "100%", minHeight: 0 }}>
+    <div className="air-chat-screen" style={{ display: "grid", gridTemplateRows: "auto 1fr", height: "100%", minHeight: 0 }}>
       <div style={{ padding: "10px 16px 0", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <div style={{ fontWeight: 700, fontSize: 14 }}>{room?.name ?? "단체 채팅"}</div>
         {room?.topic ? <span className="air-hint">{room.topic}</span> : null}

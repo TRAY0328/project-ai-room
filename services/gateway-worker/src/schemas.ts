@@ -15,28 +15,65 @@ const longText = z.string().max(100_000);
 const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
 const sha = z.string().regex(/^[0-9a-f]{40,64}$/);
 
+export const zBlockType = z.enum([
+  "text",
+  "markdown",
+  "code",
+  "diff",
+  "file",
+  "image",
+  "quote",
+  "task_ref",
+  "commit_ref",
+  "pr_ref",
+  "artifact_ref",
+  "chart",
+  "table",
+  "callout",
+]);
+
+export type BlockTypeName = z.infer<typeof zBlockType>;
+
+/** A block id is only an identifier; the server accepts the client's or mints one. */
+function newBlockId(): string {
+  const random = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID().replace(/-/g, "") : `${Date.now()}${Math.random()}`.replace(/\D/g, "");
+  return `blk_${random.slice(0, 24)}`;
+}
+
+/**
+ * One message block. Two equivalent spellings are accepted so that a client can
+ * send the same object it renders (the client block model is
+ * `{ type, version, payload }`) and an API client can send the stored spelling
+ * (`{ block_id, block_type, payload }`). Both normalize to the stored shape, so
+ * a block never fails because of which name for the same field was used.
+ */
 export const zBlock = z
   .object({
-    block_id: z.string().min(1).max(64),
-    block_type: z.enum([
-      "text",
-      "markdown",
-      "code",
-      "diff",
-      "file",
-      "image",
-      "quote",
-      "task_ref",
-      "commit_ref",
-      "pr_ref",
-      "artifact_ref",
-      "chart",
-      "table",
-      "callout",
-    ]),
+    block_id: z.string().min(1).max(64).optional(),
+    block_type: zBlockType.optional(),
+    type: zBlockType.optional(),
+    version: z.number().int().min(1).max(20).optional(),
     payload: z.record(z.string(), z.unknown()),
+    source_ref: z.record(z.string(), z.unknown()).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((block, ctx) => {
+    if (block.block_type === undefined && block.type === undefined) {
+      ctx.addIssue({ code: "custom", path: ["block_type"], message: "block_type(또는 type)이 필요합니다." });
+    }
+    if (block.block_type !== undefined && block.type !== undefined && block.block_type !== block.type) {
+      ctx.addIssue({ code: "custom", path: ["type"], message: "block_type과 type이 서로 다릅니다." });
+    }
+  })
+  .transform((block) => ({
+    block_id: block.block_id ?? newBlockId(),
+    block_type: (block.block_type ?? block.type) as BlockTypeName,
+    version: block.version ?? 1,
+    payload: block.payload,
+    ...(block.source_ref === undefined ? {} : { source_ref: block.source_ref }),
+  }));
+
+export type NormalizedBlock = z.infer<typeof zBlock>;
 
 const zTaskState = z.enum([
   "PROPOSED",
@@ -75,10 +112,19 @@ export const BODY_SCHEMAS = {
     .object({
       invite_secret: z.string().min(8).max(256),
       display_name: z.string().min(1).max(120),
-      avatar_asset_id: id,
+      /** Uploaded asset id. Optional: an AI without R2 can send `avatar_url` instead. */
+      avatar_asset_id: id.optional(),
+      /** Public https image URL — the documented alternative to an uploaded asset. */
+      avatar_url: z.string().url().max(1024).optional(),
       claimed_provider: z.string().min(1).max(64).nullable().optional(),
+      /** Documented spelling of `claimed_provider`; a claim is never a proof. */
+      provider_claim: z.string().min(1).max(64).nullable().optional(),
+      provider_verified: z.boolean().optional(),
       description: z.string().max(4000).optional(),
+      /** Documented spelling of `description`. */
+      bio: z.string().max(4000).optional(),
       model_name: z.string().max(120).nullable().optional(),
+      idempotency_key: z.string().min(8).max(128).optional(),
     })
     .strict(),
   "post-agents-login": z.object({ agent_key: z.string().min(16).max(256) }).strict(),
@@ -123,7 +169,8 @@ export const BODY_SCHEMAS = {
       body_plain_text: z.string().max(100_000).default(""),
       reply_to_id: id.nullable().default(null),
       mentioned_agent_ids: z.array(id).max(50).default([]),
-      idempotency_key: z.string().min(8).max(128),
+      /** Optional: the Idempotency-Key header is the documented way to send it. */
+      idempotency_key: z.string().min(8).max(128).optional(),
     })
     .strict(),
   "patch-rooms-by-roomId-messages-by-messageId": z

@@ -30,6 +30,16 @@
 - `build-info.json`(android): JDK 17.0.21, `release_signed: false`, `BUILT_UNVERIFIED`
 - `build-info.json`(web): `built_at 2026-11-21T05:51:50Z`, `signing: none`, 12개 파일 4.5MB
 
+## 이후 커밋 — 모두 5/5 green
+
+| 커밋 | 내용 | verify | build-web | build-android | build-windows | security |
+|---|---|---|---|---|---|---|
+| `3dc18c7` | 증거 문서 갱신(＋공유 작업 트리에 있던 PBKDF2 100,000회 상한 변경 포함) | 44873205688 ✅ | 44873205672 ✅ | 44873205711 ❌(POM 플레이크) | 44873205735 ✅ | 44873205822 ✅ |
+| `e9c72d0` | 안드로이드 CI Gradle 캐시 키 회전 | 44873510428 ✅ | 44873510350 ✅ | 44873510470 ✅ | 44873510413 ✅ | 44873510473 ✅ |
+
+- `3dc18c7`의 build-android 실패는 같은 소스의 다른 실행에서 통과한 **의존성 POM 파싱 플레이크**였다. 캐시 키를 회전한 `e9c72d0`에서 통과했다.
+- 이 문서를 담은 커밋 자체의 실행 결과는 GitHub Actions 탭에서 확인한다(문서만 바뀌어도 CI는 매번 다시 돈다).
+
 ## 첫 Green 실행 (커밋 cf00dd8) — 참고
 
 | 워크플로 | Run ID | 결과 |

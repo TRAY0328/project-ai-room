@@ -40,6 +40,19 @@ const AppContext = createContext<AppContextValue | null>(null);
 const GATEWAY_KEY = "air.gateway";
 const DEMO_KEY = "air.demo";
 const OUTBOX_KEY = "air.outbox";
+/** Display-only owner hint (never a token): lets a reload show who is signed in. */
+const OWNER_KEY = "air.owner";
+
+function readOwnerHint(): OwnerSessionDto | null {
+  const raw = readStorage(OWNER_KEY);
+  if (raw === null) return null;
+  try {
+    const parsed = JSON.parse(raw) as OwnerSessionDto;
+    return typeof parsed.owner_id === "string" && typeof parsed.display_name === "string" ? { ...parsed, role: "owner" } : null;
+  } catch {
+    return null;
+  }
+}
 
 function readStorage(key: string): string | null {
   try {
@@ -80,7 +93,7 @@ function loadOutbox(): OutboxItem[] {
 export function AppStateProvider({ children, initialGateway = null }: { children: ReactNode; initialGateway?: string | null }) {
   const [gatewayUrl, setGatewayUrlState] = useState<string | null>(() => readStorage(GATEWAY_KEY) ?? initialGateway);
   const [demoMode, setDemoModeState] = useState<boolean>(() => readStorage(DEMO_KEY) === "1");
-  const [session, setSession] = useState<OwnerSessionDto | null>(null);
+  const [session, setSessionState] = useState<OwnerSessionDto | null>(() => readOwnerHint());
   const [connection, setConnection] = useState<{ state: ConnectionState; detail: string; checkedAt: number | null }>({
     state: gatewayUrl ? "checking" : "unconfigured",
     detail: gatewayUrl ? "게이트웨이 확인 중" : "게이트웨이 URL이 설정되지 않았습니다",
@@ -94,6 +107,11 @@ export function AppStateProvider({ children, initialGateway = null }: { children
     () => new ApiClient({ baseUrl: gatewayUrl, onUnauthorized: () => setConnection((prev) => (prev.state === "ready" ? { state: "unauthenticated", detail: "세션이 만료되었습니다 — 다시 로그인하세요", checkedAt: Date.now() } : prev)) }),
     [gatewayUrl],
   );
+
+  const setSession = useCallback((next: OwnerSessionDto | null) => {
+    setSessionState(next);
+    writeStorage(OWNER_KEY, next === null ? null : JSON.stringify({ owner_id: next.owner_id, display_name: next.display_name, email: next.email ?? undefined, role: "owner" }));
+  }, []);
 
   const setGatewayUrl = useCallback((url: string | null) => {
     const clean = url?.trim().replace(/\/+$/, "") || null;
@@ -124,8 +142,14 @@ export function AppStateProvider({ children, initialGateway = null }: { children
     }
     const auth = await client.request<unknown>("GET", "/v1/agents");
     if (auth.ok) {
+      // The cookie session survived a reload: keep the display name, drop the
+      // hint only when the server says the session is gone.
       setConnection({ state: "ready", detail: "게이트웨이 정상 · 소유자 세션 유효", checkedAt: Date.now() });
     } else if (auth.status === 401) {
+      setSessionState((prev) => {
+        if (prev !== null) writeStorage(OWNER_KEY, null);
+        return null;
+      });
       setConnection({ state: "unauthenticated", detail: "게이트웨이 정상 · 로그인 필요", checkedAt: Date.now() });
     } else {
       setConnection({ state: "degraded", detail: `${auth.code}: ${auth.message}`, checkedAt: Date.now() });
@@ -208,7 +232,7 @@ export function AppStateProvider({ children, initialGateway = null }: { children
 
   const value = useMemo<AppContextValue>(
     () => ({ client, gatewayUrl, setGatewayUrl, connection, refreshConnection, session, setSession, demoMode, setDemoMode, outbox, enqueueMessage, flushOutbox, retryOutbox, discardOutbox, lastFlush }),
-    [client, gatewayUrl, setGatewayUrl, connection, refreshConnection, session, demoMode, setDemoMode, outbox, enqueueMessage, flushOutbox, retryOutbox, discardOutbox, lastFlush],
+    [client, gatewayUrl, setGatewayUrl, connection, refreshConnection, session, setSession, demoMode, setDemoMode, outbox, enqueueMessage, flushOutbox, retryOutbox, discardOutbox, lastFlush],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

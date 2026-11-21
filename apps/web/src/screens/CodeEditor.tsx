@@ -44,7 +44,7 @@ export function EditorScreen({ params }: { params: Record<string, string> }) {
         actions={<Button icon="merge" onClick={() => setPublishOpen(true)}>커밋/PR</Button>}
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "240px minmax(0, 1fr) 300px", gap: 10, minHeight: 0, alignItems: "start" }}>
+      <div className="air-ide-layout">
         <div style={{ display: "grid", gap: 10 }}>
           <FileTree
             nodes={tree}

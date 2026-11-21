@@ -12,8 +12,8 @@ import { sha256Hex } from "@ai-room/auth";
 
 export const MAX_BODY_BYTES = 1_048_576;
 
-export function jsonResponse(body: unknown, status: number, requestId: string, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body), {
+export function jsonResponse(body: unknown, status: number, requestId: string, headers: Record<string, string> = {}, cookies: readonly string[] = []): Response {
+  const response = new Response(JSON.stringify(body), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
@@ -24,6 +24,71 @@ export function jsonResponse(body: unknown, status: number, requestId: string, h
       ...headers,
     },
   });
+  // A session answer can set more than one cookie; `Headers.append` keeps them separate.
+  for (const cookie of cookies) response.headers.append("set-cookie", cookie);
+  return response;
+}
+
+/* --------------------------------------------------------------- cookies */
+
+/**
+ * Cookie names for the browser session. The access token and refresh token stay
+ * HttpOnly; the CSRF value is readable by the page on purpose, because the page
+ * has to echo it in `x-csrf-token` (double-submit).
+ */
+export const SESSION_COOKIE = "air_session";
+export const REFRESH_COOKIE = "air_refresh";
+export const CSRF_COOKIE = "air_csrf";
+
+export function readCookie(cookieHeader: string | null, name: string): string | null {
+  if (cookieHeader === null || cookieHeader.length === 0) return null;
+  for (const part of cookieHeader.split(";")) {
+    const [key, ...rest] = part.trim().split("=");
+    if (key === name) {
+      const value = rest.join("=");
+      return value.length === 0 ? null : decodeURIComponent(value);
+    }
+  }
+  return null;
+}
+
+function cookie(name: string, value: string, options: { maxAgeSeconds: number; httpOnly: boolean; secure: boolean }): string {
+  const attributes = [`${name}=${encodeURIComponent(value)}`, "Path=/", "SameSite=Lax", `Max-Age=${Math.max(0, Math.floor(options.maxAgeSeconds))}`];
+  if (options.httpOnly) attributes.push("HttpOnly");
+  if (options.secure) attributes.push("Secure");
+  return attributes.join("; ");
+}
+
+/** Seconds between now and an ISO instant; 0 when the instant is in the past. */
+function secondsUntil(iso: string | undefined): number {
+  if (iso === undefined) return 0;
+  const ms = Date.parse(iso) - Date.now();
+  return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
+}
+
+/**
+ * Turns a session answer into Set-Cookie values so a browser keeps its login
+ * without ever holding the token in JavaScript.
+ */
+export function sessionCookies(
+  session: { access_token?: unknown; refresh_token?: unknown; access_expires_at?: unknown; refresh_expires_at?: unknown },
+  csrfToken: string,
+  options: { secure: boolean },
+): string[] {
+  const access = typeof session.access_token === "string" ? session.access_token : null;
+  if (access === null) return [];
+  const refresh = typeof session.refresh_token === "string" ? session.refresh_token : null;
+  const accessExpires = typeof session.access_expires_at === "string" ? session.access_expires_at : undefined;
+  const refreshExpires = typeof session.refresh_expires_at === "string" ? session.refresh_expires_at : undefined;
+  const cookies = [cookie(SESSION_COOKIE, access, { maxAgeSeconds: secondsUntil(accessExpires), httpOnly: true, secure: options.secure })];
+  if (refresh !== null) cookies.push(cookie(REFRESH_COOKIE, refresh, { maxAgeSeconds: secondsUntil(refreshExpires), httpOnly: true, secure: options.secure }));
+  cookies.push(cookie(CSRF_COOKIE, csrfToken, { maxAgeSeconds: secondsUntil(accessExpires), httpOnly: false, secure: options.secure }));
+  return cookies;
+}
+
+/** Expires every session cookie: used on logout. */
+export function clearedSessionCookies(options: { secure: boolean }): string[] {
+  return [SESSION_COOKIE, REFRESH_COOKIE, CSRF_COOKIE].map((name) => cookie(name, "", { maxAgeSeconds: 0, httpOnly: name !== CSRF_COOKIE, secure: options.secure }));
 }
 
 export interface SuccessEnvelope<T> {

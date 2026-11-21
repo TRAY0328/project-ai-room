@@ -62,7 +62,7 @@ export function Dialog({ open, onClose, title, description, children, footer, wi
 
 /* ------------------------------------------------------------------ Drawer */
 
-export function Drawer({ open, onClose, title, children, side = "left" }: { open: boolean; onClose: () => void; title: string; children: ReactNode; side?: "left" | "right" }) {
+export function Drawer({ open, onClose, title, children, side = "left", footer }: { open: boolean; onClose: () => void; title: string; children: ReactNode; side?: "left" | "right"; footer?: ReactNode }) {
   const ref = useFocusTrap(open, onClose);
   if (!open || typeof document === "undefined") return null;
   return createPortal(
@@ -80,6 +80,7 @@ export function Drawer({ open, onClose, title, children, side = "left" }: { open
           <IconButton icon="close" label="닫기" onClick={onClose} />
         </div>
         <div className="air-scroll" style={{ flex: 1 }}>{children}</div>
+        {footer ? <div style={{ flex: "none", paddingBottom: "env(safe-area-inset-bottom)" }}>{footer}</div> : null}
       </div>
     </div>,
     document.body,

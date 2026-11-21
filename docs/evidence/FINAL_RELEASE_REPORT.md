@@ -7,7 +7,7 @@
 - Report date/time UTC: **2026-11-21T05:55Z** (KST 14:55)
 - Requested completion status: **`NOT_RELEASE_READY`** (G-01..G-12 PASS 전에는 변경 금지)
 - 이번 단계 성격: 웹·Windows·Android 앱과 게이트웨이를 **Cloudflare에 실제 배포**하고, GitHub Actions 5종을 **모두 통과**시켜 EXE·설치파일·APK·웹 빌드를 산출했다.
-- Git commit SHA: **`fc922169d7711cbeb38303d3dc48db63a605043c`** (원격 `main` HEAD, CI 5/5 success)
+- Git commit SHA: **`fc922169d7711cbeb38303d3dc48db63a605043c`** (산출물을 기록한 코드 커밋, CI 5/5 success). 이후 문서·캐시키 커밋 `3dc18c7`·`e9c72d0`도 5/5 green([`ci-runs.md`](ci-runs.md)).
 - Cloudflare deployment/environment: **DEPLOYED (staging)** — `https://project-ai-room.playtray0328.workers.dev`, Worker `project-ai-room`, 버전 `3bb6682c-ee36-4dae-967c-36f13bccfcf6`
 - GitHub repository: `https://github.com/TRAY0328/project-ai-room` (**PUBLIC — 사용자 명시 승인**). 코드·문서는 이 저장소가 단일 진본이다.
 - Source code archive and SHA-256: **NOT_PRODUCED** (git 커밋으로 관리, 별도 아카이브 없음)
