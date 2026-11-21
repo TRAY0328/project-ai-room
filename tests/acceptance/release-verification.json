@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "evaluated_at": "2026-11-21T05:19:59.216Z",
+  "evaluated_at": "2026-11-21T05:51:12.446Z",
   "release_status": "INCOMPLETE",
   "ledger": "docs/evidence/release-evidence.json",
   "qa_summary": {
@@ -16,7 +16,7 @@
       {
         "file": "tests/acceptance/identity_lifecycle.test.mjs",
         "exit_code": 0,
-        "duration_ms": 474,
+        "duration_ms": 540,
         "passed": 8,
         "failed": 0,
         "timed_out": false
@@ -24,7 +24,7 @@
       {
         "file": "tests/acceptance/openapi_spec.test.mjs",
         "exit_code": 0,
-        "duration_ms": 713,
+        "duration_ms": 641,
         "passed": 6,
         "failed": 0,
         "timed_out": false
@@ -32,7 +32,7 @@
       {
         "file": "tests/acceptance/policy_guards.test.mjs",
         "exit_code": 0,
-        "duration_ms": 571,
+        "duration_ms": 504,
         "passed": 11,
         "failed": 0,
         "timed_out": false
@@ -40,7 +40,7 @@
       {
         "file": "tests/acceptance/release_gates.test.mjs",
         "exit_code": 0,
-        "duration_ms": 156,
+        "duration_ms": 142,
         "passed": 2,
         "failed": 0,
         "timed_out": false
@@ -48,7 +48,7 @@
       {
         "file": "tests/chaos/failure_injection.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1264,
+        "duration_ms": 1258,
         "passed": 9,
         "failed": 0,
         "timed_out": false
@@ -56,7 +56,7 @@
       {
         "file": "tests/integration/api_admin.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1221,
+        "duration_ms": 1205,
         "passed": 8,
         "failed": 0,
         "timed_out": false
@@ -64,7 +64,7 @@
       {
         "file": "tests/integration/api_chat.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1483,
+        "duration_ms": 1336,
         "passed": 9,
         "failed": 0,
         "timed_out": false
@@ -72,7 +72,7 @@
       {
         "file": "tests/integration/api_code.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1413,
+        "duration_ms": 1215,
         "passed": 8,
         "failed": 0,
         "timed_out": false
@@ -80,7 +80,7 @@
       {
         "file": "tests/integration/api_coverage.test.mjs",
         "exit_code": 0,
-        "duration_ms": 847,
+        "duration_ms": 804,
         "passed": 2,
         "failed": 0,
         "timed_out": false
@@ -88,7 +88,7 @@
       {
         "file": "tests/integration/api_cross_cutting.test.mjs",
         "exit_code": 0,
-        "duration_ms": 862,
+        "duration_ms": 773,
         "passed": 4,
         "failed": 0,
         "timed_out": false
@@ -96,7 +96,7 @@
       {
         "file": "tests/integration/api_identity.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1887,
+        "duration_ms": 1577,
         "passed": 10,
         "failed": 0,
         "timed_out": false
@@ -104,7 +104,7 @@
       {
         "file": "tests/integration/api_projects.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1329,
+        "duration_ms": 1114,
         "passed": 6,
         "failed": 0,
         "timed_out": false
@@ -112,7 +112,7 @@
       {
         "file": "tests/integration/db_schema.test.mjs",
         "exit_code": 0,
-        "duration_ms": 383,
+        "duration_ms": 292,
         "passed": 16,
         "failed": 0,
         "timed_out": false
@@ -120,7 +120,7 @@
       {
         "file": "tests/security/security_cases.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1146,
+        "duration_ms": 989,
         "passed": 1,
         "failed": 0,
         "timed_out": false
@@ -128,7 +128,7 @@
       {
         "file": "tests/unit/contracts.test.mjs",
         "exit_code": 0,
-        "duration_ms": 503,
+        "duration_ms": 418,
         "passed": 11,
         "failed": 0,
         "timed_out": false
@@ -136,7 +136,7 @@
       {
         "file": "tests/unit/platform_primitives.test.mjs",
         "exit_code": 0,
-        "duration_ms": 426,
+        "duration_ms": 376,
         "passed": 9,
         "failed": 0,
         "timed_out": false
@@ -188,12 +188,12 @@
     {
       "id": "G-04",
       "title": "GitHub PR, Actions 빌드/테스트, 검증 병합",
-      "status": "BLOCKED",
+      "status": "PARTIAL",
       "checks": [
         {
           "name": "ledger:G-04",
-          "status": "BLOCKED",
-          "detail": "1개 증거 · Pickle(에이전트) — gh/gh api 실행 결과 · GitHub 연결에 저장소 생성 권한이 없어 비공개 리포를 만들지 못했다. Run ID·PR 증거 없음."
+          "status": "PARTIAL",
+          "detail": "3개 증거 · Pickle(에이전트) — gh run list/download로 실행·아티팩트 확인 · Actions 5종 전부 success(커밋 cf00dd8). 다만 PR 생성·리뷰·검증 병합 흐름은 실제로 돌리지 않았다(푸시 직행)."
         }
       ]
     },
@@ -217,7 +217,7 @@
     {
       "id": "G-06",
       "title": "Windows EXE 및 설치 파일 생성·설치·실행",
-      "status": "NOT_TESTED",
+      "status": "PARTIAL",
       "checks": [
         {
           "name": "windows-artifact",
@@ -226,8 +226,8 @@
         },
         {
           "name": "ledger:G-06",
-          "status": "NOT_TESTED",
-          "detail": "0개 증거 · Pickle(에이전트) — 산출물 탐색 · Windows EXE·설치 파일이 아직 없다. build-windows 워크플로 실행(CI) 후 SHA-256과 함께 기록해야 한다."
+          "status": "PARTIAL",
+          "detail": "2개 증거 · Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조 · AI ROOM.exe 4,820,992B / NSIS 1,873,186B / MSI 2,510,848B 생성, SHA-256 기록. 실제 Windows 기기 설치·실행 시험과 코드 서명은 미실시(미서명)."
         }
       ]
     },
@@ -244,7 +244,7 @@
         {
           "name": "ledger:G-07",
           "status": "PARTIAL",
-          "detail": "1개 증거 · Pickle(에이전트) — 로컬 Gradle 빌드 산출물 · debug APK와 미서명 release APK 생성·SHA-256 기록. 실기기 설치·실행 시험은 미실시."
+          "detail": "3개 증거 · Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조 · CI debug APK 9,146,029B SHA-256 ce281f78…0d0d8(로컬 빌드와 동일). release APK는 서명 키 부재로 미생성, 실기기 설치 미실시."
         }
       ]
     },
@@ -368,9 +368,9 @@
     },
     {
       "id": "G-04",
-      "status": "BLOCKED",
+      "status": "PARTIAL",
       "reasons": [
-        "ledger:G-04: 1개 증거 · Pickle(에이전트) — gh/gh api 실행 결과 · GitHub 연결에 저장소 생성 권한이 없어 비공개 리포를 만들지 못했다. Run ID·PR 증거 없음."
+        "ledger:G-04: 3개 증거 · Pickle(에이전트) — gh run list/download로 실행·아티팩트 확인 · Actions 5종 전부 success(커밋 cf00dd8). 다만 PR 생성·리뷰·검증 병합 흐름은 실제로 돌리지 않았다(푸시 직행)."
       ]
     },
     {
@@ -382,17 +382,17 @@
     },
     {
       "id": "G-06",
-      "status": "NOT_TESTED",
+      "status": "PARTIAL",
       "reasons": [
         "windows-artifact: apps/desktop 아래 .exe/.msi 없음",
-        "ledger:G-06: 0개 증거 · Pickle(에이전트) — 산출물 탐색 · Windows EXE·설치 파일이 아직 없다. build-windows 워크플로 실행(CI) 후 SHA-256과 함께 기록해야 한다."
+        "ledger:G-06: 2개 증거 · Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조 · AI ROOM.exe 4,820,992B / NSIS 1,873,186B / MSI 2,510,848B 생성, SHA-256 기록. 실제 Windows 기기 설치·실행 시험과 코드 서명은 미실시(미서명)."
       ]
     },
     {
       "id": "G-07",
       "status": "PARTIAL",
       "reasons": [
-        "ledger:G-07: 1개 증거 · Pickle(에이전트) — 로컬 Gradle 빌드 산출물 · debug APK와 미서명 release APK 생성·SHA-256 기록. 실기기 설치·실행 시험은 미실시."
+        "ledger:G-07: 3개 증거 · Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조 · CI debug APK 9,146,029B SHA-256 ce281f78…0d0d8(로컬 빌드와 동일). release APK는 서명 키 부재로 미생성, 실기기 설치 미실시."
       ]
     },
     {

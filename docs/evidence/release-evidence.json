@@ -10,7 +10,19 @@
     "d1_database_id": "483c3df3-3ef1-44f8-a135-65fb7e05eeb3",
     "d1_migration": "0001_initial.sql applied 2026-11-21T04:53:08Z",
     "assets": "apps/web/dist (13 files read, 11 uploaded)",
-    "source_commit": "46fd4f1 (local only, no remote)"
+    "source_commit": "cf00dd8 (pushed; CI green on this commit)"
+  },
+  "ci": {
+    "repository": "https://github.com/TRAY0328/project-ai-room",
+    "commit": "cf00dd884e39095986655b392f156db9075d2d89",
+    "evidence": "docs/evidence/ci-runs.md",
+    "runs": {
+      "verify": { "run_id": 44871990981, "conclusion": "success" },
+      "build-web": { "run_id": 44871990894, "conclusion": "success" },
+      "build-android": { "run_id": 44871990867, "conclusion": "success" },
+      "build-windows": { "run_id": 44871990877, "conclusion": "success" },
+      "security": { "run_id": 44871990908, "conclusion": "success" }
+    }
   },
   "gates": {
     "G-03": {
@@ -21,11 +33,11 @@
       "note": "지정 AI 8종의 키·계정이 없다(Q039 blocker 8/8). 실제 다중 AI 협업 시연 불가."
     },
     "G-04": {
-      "status": "BLOCKED",
-      "verified_at": "2026-11-21T05:02:22Z",
-      "verified_by": "Pickle(에이전트) — gh/gh api 실행 결과",
-      "evidence": ["docs/evidence/github-blocked.md"],
-      "note": "GitHub 연결에 저장소 생성 권한이 없어 비공개 리포를 만들지 못했다. Run ID·PR 증거 없음."
+      "status": "PARTIAL",
+      "verified_at": "2026-11-21T05:50:00Z",
+      "verified_by": "Pickle(에이전트) — gh run list/download로 실행·아티팩트 확인",
+      "evidence": ["docs/evidence/ci-runs.md", "run:44871990981", "run:44871990877"],
+      "note": "Actions 5종 전부 success(커밋 cf00dd8). 다만 PR 생성·리뷰·검증 병합 흐름은 실제로 돌리지 않았다(푸시 직행)."
     },
     "G-05": {
       "status": "PARTIAL",
@@ -38,18 +50,18 @@
       "note": "홈/포털문서/헬스/인증가드 라이브 200·401 확인. 소유자 계정 미생성으로 로그인·대화·IDE 실사용 시연은 미실시."
     },
     "G-06": {
-      "status": "NOT_TESTED",
-      "verified_at": "2026-11-21T05:02:22Z",
-      "verified_by": "Pickle(에이전트) — 산출물 탐색",
-      "evidence": [],
-      "note": "Windows EXE·설치 파일이 아직 없다. build-windows 워크플로 실행(CI) 후 SHA-256과 함께 기록해야 한다."
+      "status": "PARTIAL",
+      "verified_at": "2026-11-21T05:50:00Z",
+      "verified_by": "Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조",
+      "evidence": ["docs/evidence/ci-runs.md", "run:44871990877"],
+      "note": "AI ROOM.exe 4,820,992B / NSIS 1,873,186B / MSI 2,510,848B 생성, SHA-256 기록. 실제 Windows 기기 설치·실행 시험과 코드 서명은 미실시(미서명)."
     },
     "G-07": {
       "status": "PARTIAL",
-      "verified_at": "2026-11-21T05:02:22Z",
-      "verified_by": "Pickle(에이전트) — 로컬 Gradle 빌드 산출물",
-      "evidence": ["docs/evidence/android-local-build.md"],
-      "note": "debug APK와 미서명 release APK 생성·SHA-256 기록. 실기기 설치·실행 시험은 미실시."
+      "verified_at": "2026-11-21T05:50:00Z",
+      "verified_by": "Pickle(에이전트) — CI 아티팩트 다운로드·해시 대조",
+      "evidence": ["docs/evidence/ci-runs.md", "docs/evidence/android-local-build.md", "run:44871990867"],
+      "note": "CI debug APK 9,146,029B SHA-256 ce281f78…0d0d8(로컬 빌드와 동일). release APK는 서명 키 부재로 미생성, 실기기 설치 미실시."
     },
     "G-10": {
       "status": "PARTIAL",
