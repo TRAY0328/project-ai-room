@@ -13,13 +13,6 @@ publish = false
 name = "ai_room_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
-# 실행 파일 이름은 tauri.conf.json의 productName("AI ROOM")과 맞춘다.
-# 카고 패키지 이름은 공백을 쓸 수 없어서 바이너리 타깃 이름을 따로 지정한다.
-# (CI는 target/release/AI ROOM.exe 를 아티팩트로 수집한다)
-[[bin]]
-name = "AI ROOM"
-path = "src/main.rs"
-
 [build-dependencies]
 tauri-build = { version = "=2.7.6", features = [] }
 
