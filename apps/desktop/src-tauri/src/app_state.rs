@@ -70,10 +70,13 @@ pub fn current_status(app: &AppHandle) -> ProbeResult {
 
 pub fn read_load_note(app: &AppHandle) -> Option<String> {
     let state = app.state::<AppState>();
-    match state.load_note.lock() {
-        Ok(guard) => guard.clone(),
-        Err(poisoned) => poisoned.into_inner().clone(),
-    }
+    // Same shape as current_settings/current_status: bind the guard to a local so
+    // it is dropped before `state` (a tail-expr match would outlive the borrow).
+    let guard = match state.load_note.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    guard.clone()
 }
 
 /// 설정을 메모리와 디스크에 함께 반영한다. 디스크 실패는 사용자에게 알린다.

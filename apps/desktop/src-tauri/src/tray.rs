@@ -24,7 +24,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let sep_top = PredefinedMenuItem::separator(app)?;
     let sep_bottom = PredefinedMenuItem::separator(app)?;
 
-    let mut menu = Menu::new(app)?;
+    let menu = Menu::new(app)?;
     menu.append(&open)?;
     menu.append(&settings_item)?;
     menu.append(&sep_top)?;
