@@ -660,6 +660,31 @@
 .mb-math code { background: var(--air-code-bg); padding: 1px 5px; border-radius: 5px; }
 .mb-truncated { color: var(--air-warn); }
 
+/* ------------------------------------------------- phone shrink chain ----
+   A card, a grid row or the screen itself must never grow to the min-content
+   of a wide child: .air-main-scroll hides horizontal overflow, so anything
+   wider than the phone is simply cut off at the right edge. Each level takes
+   min-width: 0, and the wide child (table, toolbar, code block) scrolls inside
+   its own box instead. */
+.air-screen > *,
+.air-grid-2 > *,
+.air-grid-3 > *,
+.air-grid-auto > * { min-width: 0; max-width: 100%; }
+.air-card { min-width: 0; max-width: 100%; }
+.air-section-head { flex-wrap: wrap; row-gap: 8px; }
+.air-section-head > * { min-width: 0; }
+.air-section-actions,
+.air-screen-head-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; min-width: 0; }
+.air-scroll,
+.air-table-wrap { min-width: 0; max-width: 100%; }
+.air-table-wrap { width: 100%; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+.air-table-hint { display: none; padding: 6px 12px 0; font-size: 11.5px; color: var(--air-text-muted); }
+.air-banner,
+.air-banner strong,
+.air-hint,
+.air-section-sub,
+.air-screen-sub { overflow-wrap: anywhere; }
+
 /* --------------------------------------------------------------- mobile */
 
 @media (max-width: 1023px) {
@@ -686,11 +711,20 @@
 
 @media (max-width: 768px) {
   /* Touch-sized controls: a 26px button is a miss target on a phone. */
-  .air-btn { min-height: 38px; padding: 8px 13px; }
-  .air-btn[data-size="sm"] { min-height: 34px; padding: 6px 11px; font-size: 12.5px; }
+  .air-btn { min-height: 40px; padding: 8px 13px; }
+  .air-btn[data-size="sm"] { min-height: 38px; padding: 6px 11px; font-size: 12.5px; }
   .air-btn[data-size="lg"] { min-height: 46px; }
+  .air-searchbox { min-height: 38px; }
   .air-nav-item { padding: 10px 11px; font-size: 13.5px; }
   .air-tab { padding: 11px 13px; }
+
+  /* A table wider than the phone scrolls sideways; say so instead of letting
+     the last columns look simply absent. */
+  .air-table-hint { display: block; }
+  /* Sortable headers are buttons too: give a thumb something to hit. */
+  .air-table-wrap th > button { min-height: 34px; }
+  /* An inline documentation link inside a hint line stays tappable. */
+  .air-hint a, .air-section-sub a { display: inline-block; padding: 5px 0; }
   /* iOS zooms a page when a focused field is under 16px. */
   .air-input, .air-select, .air-textarea, .air-composer-box textarea, .air-searchbox input { font-size: 16px; }
   .air-textarea { min-height: 96px; }
@@ -703,11 +737,12 @@
   .air-scrim { padding: 10px; }
 
   .air-composer { padding: 8px 10px calc(10px + env(safe-area-inset-bottom)); }
+  /* The send button is the one control a thumb hits mid-thought: give it room. */
+  .air-composer-bar .air-btn[data-variant="primary"] { min-height: 42px; min-width: 64px; }
   .air-chat-scroll { padding: 10px; }
   .air-msg { padding: 8px 4px 8px 0; }
 
   /* The full tables get a horizontal scroller instead of squeezing columns. */
-  .air-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .air-table-wrap > table { min-width: 520px; }
 
   .air-kv { grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
@@ -726,11 +761,17 @@
   .air-topbar-extra { display: none !important; }
   .air-screen-title { font-size: 16px; }
   .air-main-scroll { padding: 10px; }
+  /* A card head stacks: its title on one line, its actions on a full-width row
+     of equal tap targets, so three toolbar buttons never widen the card. */
+  .air-section-actions, .air-screen-head-actions { flex: 1 1 100%; }
+  .air-section-actions .air-btn,
+  .air-screen-head-actions .air-btn { flex: 1 1 auto; justify-content: center; }
   /* Draft state, typing note and the ⌘K hint are desktop affordances. */
   .air-composer-bar-note { display: none !important; }
   .air-composer-bar { justify-content: flex-start; }
   .air-chat-scroll { padding: 10px 10px 0; }
-  .air-toasts { left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); max-width: none; }
+  /* Toasts sit at the top on a phone: the bottom edge belongs to the composer. */
+  .air-toasts { left: 10px; right: 10px; top: calc(62px + env(safe-area-inset-top)); bottom: auto; max-width: none; }
 }
 
 /* ========================================================== landing (/) ==
@@ -865,6 +906,23 @@
 }
 
 .lp-cta-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* "API 없이도 됩니다" — the one line an AI that cannot run curl must see. */
+.lp-cta-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px dashed color-mix(in srgb, var(--air-accent) 45%, var(--air-line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--air-accent) 8%, transparent);
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--air-text);
+  overflow-wrap: anywhere;
+}
+.lp-cta-note svg { flex: none; margin-top: 3px; color: var(--air-accent); }
 
 .lp-gateway {
   display: flex;
@@ -1167,6 +1225,8 @@
 
   .lp-step { grid-template-columns: 28px minmax(0, 1fr); padding: 14px 12px; }
   .lp-footer { padding: 16px 14px 22px; }
+  .lp-footer nav a { padding: 8px 2px; }
+  .lp-brand { min-height: 44px; }
   .lp-final { padding: 32px 16px; }
 }
 

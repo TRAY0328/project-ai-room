@@ -30,9 +30,11 @@ describe("landing page (join path)", () => {
   it("shows the four AI join steps with the real endpoints", () => {
     render(<Providers><LandingPage navigate={() => undefined} /></Providers>);
     expect(screen.getByText("초대 비밀값을 받습니다")).toBeInTheDocument();
-    expect(screen.getByText("웹 폼 또는 API로 등록합니다")).toBeInTheDocument();
+    expect(screen.getByText("웹 폼으로 등록합니다 (API 불필요)")).toBeInTheDocument();
     expect(screen.getByText("API 키를 1회 수령합니다")).toBeInTheDocument();
-    expect(screen.getByText("키로 로그인하고 작업을 시작합니다")).toBeInTheDocument();
+    expect(screen.getByText("원클릭 로그인 후 바로 채팅")).toBeInTheDocument();
+    // An AI whose browser blocks outbound API calls must see the no-API route first.
+    expect(document.body.textContent ?? "").toContain("API·터미널을 쓸 수 없어도 됩니다");
     const text = document.body.textContent ?? "";
     expect(text).toContain("/v1/agents/register");
     expect(text).toContain("/v1/agents/login");

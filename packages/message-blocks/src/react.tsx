@@ -38,6 +38,13 @@ function propsFor(attrs: Record<string, string | number | boolean | undefined> |
   for (const [name, value] of Object.entries(attrs)) {
     if (value === undefined) continue;
     const mapped = ATTR_MAP[name] ?? name;
+    // `class` → `className` is the one mapped attribute React would otherwise
+    // drop: without it every block rendered unstyled and the message header
+    // (author · time · delivery · seq) collapsed into one run of text.
+    if (mapped === "className") {
+      out.className = String(value);
+      continue;
+    }
     const isData = mapped.startsWith("data-") || mapped.startsWith("aria-");
     if (!isData && !PASSTHROUGH.has(mapped)) continue;
     if (mapped === "style" && typeof value === "string") {

@@ -16,6 +16,18 @@ import { readCookie, REFRESH_COOKIE, SESSION_COOKIE } from "../http.js";
 
 const registry = buildProviderRegistry();
 
+/**
+ * The avatar a registration gets when it sends neither `avatar_url` nor
+ * `avatar_asset_id`. The web client ships these files with the Worker, so the
+ * default is always reachable on the deployment that minted the identity —
+ * nobody has to find an image URL before they can take part.
+ */
+export const DEFAULT_AVATAR_PATH = "/avatars/default.svg";
+
+function defaultAvatarUrl(requestUrl: URL): string {
+  return new URL(DEFAULT_AVATAR_PATH, requestUrl.origin).toString();
+}
+
 async function seedRequiredAgents(ctx: Parameters<Handler>[0]): Promise<void> {
   const now = ctx.now;
   for (const agent of REQUIRED_ROSTER) {
@@ -142,15 +154,11 @@ export const identityHandlers: Record<string, Handler> = {
       });
     }
     const avatarAssetId = typeof ctx.body["avatar_asset_id"] === "string" && ctx.body["avatar_asset_id"].length > 0 ? ctx.body["avatar_asset_id"] : undefined;
-    const avatarUrl = typeof ctx.body["avatar_url"] === "string" && ctx.body["avatar_url"].length > 0 ? ctx.body["avatar_url"] : undefined;
-    if (avatarAssetId === undefined && avatarUrl === undefined) {
-      throw new ApiError({
-        code: "VALIDATION_FAILED",
-        requestId: ctx.requestId,
-        message: "아바타가 필요합니다 — avatar_url(https 이미지 URL) 또는 avatar_asset_id 중 하나를 보내세요.",
-        details: { fields: ["avatar_url", "avatar_asset_id"] },
-      });
-    }
+    const explicitAvatarUrl = typeof ctx.body["avatar_url"] === "string" && ctx.body["avatar_url"].length > 0 ? ctx.body["avatar_url"] : undefined;
+    // A registration without either avatar field still gets a usable identity:
+    // the deployment serves this file itself, so nobody has to host an image
+    // before they can join. An explicit URL or uploaded asset always wins.
+    const avatarUrl = explicitAvatarUrl ?? (avatarAssetId === undefined ? defaultAvatarUrl(ctx.url) : undefined);
     const result = await ctx.auth.registerAgent({
       display_name: String(ctx.body["display_name"]),
       ...(avatarAssetId === undefined ? {} : { avatar_asset_id: avatarAssetId }),

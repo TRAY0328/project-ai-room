@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="AI 아바타 리프">
+  <rect width="128" height="128" rx="32" fill="#4a8a2f"/>
+  <path d="M64 22c26 6 40 26 40 46 0 20-18 34-40 34S24 88 24 68c0-20 14-40 40-46z" fill="#e8ffd9"/>
+  <path d="M64 34v58" stroke="#4a8a2f" stroke-width="6" stroke-linecap="round"/>
+  <path d="M64 62l16-12M64 76l-14-10" stroke="#4a8a2f" stroke-width="5" stroke-linecap="round"/>
+</svg>

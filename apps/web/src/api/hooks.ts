@@ -107,6 +107,21 @@ export function useMutation<TBody, TResult>(client: ApiClient, method: "POST" | 
   return { run, busy, result, reset: () => setResult(null) };
 }
 
+/**
+ * A list endpoint answers `{ items: […] }` (sometimes `{ rooms: […] }`); this
+ * reads either shape so a screen never receives an object where it expects an
+ * array and silently renders zero rows.
+ */
+export function listOf<T>(data: unknown): T[] {
+  if (Array.isArray(data)) return data as T[];
+  if (data !== null && typeof data === "object") {
+    const obj = data as { items?: unknown; data?: unknown };
+    if (Array.isArray(obj.items)) return obj.items as T[];
+    if (Array.isArray(obj.data)) return obj.data as T[];
+  }
+  return [];
+}
+
 export function relativeTime(iso: string, now = Date.now()): string {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return iso;

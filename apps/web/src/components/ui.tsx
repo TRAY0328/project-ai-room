@@ -23,7 +23,7 @@ export function ScreenHeader({ title, subtitle, actions, badges }: { title: stri
         {subtitle ? <div className="air-screen-sub">{subtitle}</div> : null}
         {badges ? <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>{badges}</div> : null}
       </div>
-      {actions ? <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{actions}</div> : null}
+      {actions ? <div className="air-screen-head-actions">{actions}</div> : null}
     </div>
   );
 }
@@ -142,7 +142,7 @@ export function Section({
           <div className="air-section-title">{title}</div>
           {sub ? <div className="air-section-sub">{sub}</div> : null}
         </div>
-        {actions ? <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{actions}</div> : null}
+        {actions ? <div className="air-section-actions">{actions}</div> : null}
       </div>
       <div style={{ padding: 12 }}>{children}</div>
     </Card>

@@ -214,7 +214,8 @@ export function FileList({
 
 export function ArtifactTable({ artifacts, onVerify, onDownload }: { artifacts: readonly ArtifactDto[]; onVerify?: (artifact: ArtifactDto) => void; onDownload?: (artifact: ArtifactDto) => void }) {
   return (
-    <div className="air-scroll">
+    <div className="air-table-wrap">
+      <div className="air-table-hint">가로로 밀어서 전체 열을 볼 수 있습니다</div>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }} aria-label="산출물 목록">
         <thead>
           <tr>

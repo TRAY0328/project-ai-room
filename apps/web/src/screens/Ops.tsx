@@ -72,7 +72,8 @@ export function ConnectionsScreen() {
 
       <Card>
         <SectionHeader title="능력 매트릭스" sub="verified 만 실제 사용 가능으로 집계" />
-        <div className="air-scroll">
+        <div className="air-table-wrap">
+          <div className="air-table-hint">가로로 밀어서 전체 열을 볼 수 있습니다</div>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }} aria-label="제공자 능력 매트릭스">
             <thead>
               <tr>

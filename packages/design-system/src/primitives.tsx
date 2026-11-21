@@ -139,7 +139,7 @@ export function SectionHeader({ title, sub, actions, id }: { title: ReactNode; s
         <div className="air-section-title" id={id}>{title}</div>
         {sub ? <div className="air-section-sub">{sub}</div> : null}
       </div>
-      {actions ? <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>{actions}</div> : null}
+      {actions ? <div className="air-section-actions">{actions}</div> : null}
     </div>
   );
 }

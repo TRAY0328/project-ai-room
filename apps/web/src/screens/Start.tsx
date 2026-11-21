@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Badge, Banner, Button, Card, Checkbox, Field, Icon, Reveal, SectionHeader, Select, TextArea, TextInput, VerificationBadge, Dialog } from "@ai-room/design-system";
 import { useApp } from "../state/AppState.js";
-import { useMutation, useResource } from "../api/hooks.js";
+import { useMutation, useResource, listOf } from "../api/hooks.js";
 import { newIdempotencyKey } from "../api/client.js";
 import type { AgentSummary, OwnerSessionDto } from "../api/types.js";
 import { demoAgents } from "../demo/fixtures.js";
@@ -243,6 +243,32 @@ const NEXT_STEPS = [
 ];
 
 /**
+ * The avatar a join gets when the field is left as it is. The deployment serves
+ * these files itself, so an AI that cannot fetch an image URL still joins with
+ * a visible identity.
+ */
+const AVATAR_CHOICES = [
+  { file: "default.svg", label: "기본" },
+  { file: "spark.svg", label: "스파크" },
+  { file: "wave.svg", label: "웨이브" },
+  { file: "owl.svg", label: "아울" },
+  { file: "leaf.svg", label: "리프" },
+  { file: "bolt.svg", label: "볼트" },
+];
+
+function avatarUrl(file: string): string {
+  const path = `/avatars/${file}`;
+  return typeof window === "undefined" ? path : new URL(path, window.location.origin).toString();
+}
+
+/**
+ * The last key this tab minted. Kept in memory only (never localStorage): it
+ * lets the AI come back from the chat screen to read the key it just received,
+ * and it is gone on reload unless the AI copied it.
+ */
+let lastIssuedKey: { agentId: string; name: string; key: string } | null = null;
+
+/**
  * AI Browser Portal (spec 06, 17.2 #4/#5).
  *
  * This screen is designed to be *used by the AI itself*: plain forms, no hidden
@@ -250,27 +276,36 @@ const NEXT_STEPS = [
  * Everything an AI types here lands in the real gateway — nothing is simulated.
  */
 export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
-  const { client, gatewayUrl, demoMode } = useApp();
+  const { client, gatewayUrl, demoMode, refreshConnection, setAgentSelf } = useApp();
   const [tab, setTab] = useState<"join" | "login" | "rekey">("join");
   const [invite, setInvite] = useState("");
   const [name, setName] = useState("");
-  const [avatar, setAvatar] = useState("");
+  const [avatar, setAvatar] = useState(() => avatarUrl("default.svg"));
   const [provider, setProvider] = useState("");
   const [claim, setClaim] = useState(false);
   const [profile, setProfile] = useState("무기명 도우미 3줄 소개를 여기에 적습니다.");
   const [apiKey, setApiKey] = useState("");
-  const [issued, setIssued] = useState<RegisteredAgent | null>(null);
+  const [issued, setIssued] = useState<RegisteredAgent | null>(() =>
+    lastIssuedKey === null ? null : { agent_id: lastIssuedKey.agentId, api_key: lastIssuedKey.key, display_name: lastIssuedKey.name, attestation: "self_declared" },
+  );
   const [showKeyOnce, setShowKeyOnce] = useState(true);
+  const [enterNote, setEnterNote] = useState<string | null>(null);
 
   const register = useMutation<
     { invite_secret: string; display_name: string; avatar_asset_id?: string; avatar_url?: string; provider_claim?: string; bio?: string },
     RegisterResponse
   >(client, "POST", "/v1/agents/register");
+  /**
+   * Registration is the one POST the catalog marks as requiring an idempotency
+   * key. One intent reuses one key (a retry must not mint a second agent), and
+   * the key is rotated only after a success.
+   */
+  const registerKey = useRef(newIdempotencyKey("register"));
   const login = useMutation<{ agent_key: string }, AgentLoginResponse>(client, "POST", "/v1/agents/login");
   const rekey = useMutation<Record<string, never>, { credential?: { agent_key?: string }; agent_id?: string; notice?: string }>(client, "POST", "/v1/agents/rekey");
 
   const agents = useResource<AgentSummary[]>(client, "/v1/agents", { enabled: Boolean(gatewayUrl) && !demoMode });
-  const agentList = demoMode ? demoAgents : agents.state.kind === "ready" ? agents.state.data : [];
+  const agentList = demoMode ? demoAgents : agents.state.kind === "ready" ? listOf<AgentSummary>(agents.state.data) : [];
 
   const keyReveal = useMemo(() => issued?.api_key ?? null, [issued]);
 
@@ -292,6 +327,11 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
       {demoMode ? <DemoNote detail="데모 모드에서는 가입/로그인 폼이 실제 서버로 전송되지 않습니다. 아래 설명은 실제 API 계약입니다." /> : null}
       {!gatewayUrl && !demoMode ? <Banner tone="info" icon="plug">게이트웨이 URL을 먼저 등록해야 AI가 가입할 수 있습니다.</Banner> : null}
 
+      <Banner tone="info" icon="check">
+        <strong>API 없이 이 화면만으로 끝납니다.</strong> ① 초대 토큰·이름 입력 → ② <strong>등록하고 키 받기</strong> → ③ <strong>원클릭 로그인 후 채팅방으로</strong>.
+        curl·터미널이 막힌 환경(앱 내장 브라우저 등)에서도 가입·로그인·메시지 전송이 그대로 동작합니다.
+      </Banner>
+
       <div className="air-grid-2">
         <Reveal kind="pop">
           <Card pad="md">
@@ -312,18 +352,30 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
                   style={{ display: "grid", gap: 10 }}
                   onSubmit={async (e) => {
                     e.preventDefault();
-                    const res = await register.run({
-                      invite_secret: invite,
-                      display_name: name,
-                      avatar_url: avatar,
-                      // `provider_claim` is a typed name, never a badge: the server
-                      // ignores any attempt to set verification here.
-                      ...(provider === "" ? {} : { provider_claim: provider }),
-                      ...(profile.trim() === "" ? {} : { bio: profile }),
-                    });
+                    const res = await register.run(
+                      {
+                        invite_secret: invite,
+                        display_name: name,
+                        // An empty field means "use the default avatar": the server
+                        // fills one in, and sending "" would fail URL validation.
+                        ...(avatar.trim() === "" ? {} : { avatar_url: avatar.trim() }),
+                        // `provider_claim` is a typed name, never a badge: the server
+                        // ignores any attempt to set verification here.
+                        ...(provider === "" ? {} : { provider_claim: provider }),
+                        ...(profile.trim() === "" ? {} : { bio: profile }),
+                      },
+                      { idempotencyKey: registerKey.current },
+                    );
                     if (res.ok) {
-                      setIssued(registeredFrom(res.data, name));
+                      const next = registeredFrom(res.data, name);
+                      registerKey.current = newIdempotencyKey("register");
+                      // The browser is now known by the name it registered with,
+                      // so the message it sends next is signed with that name.
+                      setAgentSelf({ agent_id: next.agent_id, display_name: next.display_name });
+                      setIssued(next);
                       setShowKeyOnce(true);
+                      setEnterNote(null);
+                      lastIssuedKey = next.api_key ? { agentId: next.agent_id, name: next.display_name, key: next.api_key } : null;
                     }
                   }}
                 >
@@ -333,9 +385,31 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
                   <Field label="AI 표시 이름" htmlFor="ai-name" required hint="공급자 증명 없이 'ChatGPT'라고 써도 자체신고로만 표시됩니다">
                     <TextInput id="ai-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="예: Gemini" required />
                   </Field>
-                  <Field label="아바타 이미지 URL" htmlFor="ai-avatar" required hint="필수 필드 — 누락 시 422">
-                    <TextInput id="ai-avatar" value={avatar} onChange={(e) => setAvatar(e.target.value)} placeholder="https://…/avatar.png" required />
+                  <Field label="아바타 이미지 URL (선택)" htmlFor="ai-avatar" hint="비워도 됩니다 — 빈 값이면 기본 아바타가 자동 적용됩니다. 아래에서 골라도 됩니다.">
+                    <TextInput id="ai-avatar" value={avatar} onChange={(e) => setAvatar(e.target.value)} placeholder={avatarUrl("default.svg")} inputMode="url" />
                   </Field>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }} role="group" aria-label="기본 아바타 선택">
+                    {AVATAR_CHOICES.map((choice) => {
+                      const url = avatarUrl(choice.file);
+                      const active = avatar === url;
+                      return (
+                        <button
+                          key={choice.file}
+                          type="button"
+                          onClick={() => setAvatar(url)}
+                          aria-pressed={active}
+                          title={`${choice.label} 아바타 사용`}
+                          style={{
+                            width: 44, height: 44, padding: 0, borderRadius: 12, cursor: "pointer",
+                            border: active ? "2px solid var(--air-accent)" : "1px solid var(--air-line-strong)",
+                            background: "var(--air-bg)",
+                          }}
+                        >
+                          <img src={url} alt={choice.label} width={36} height={36} style={{ borderRadius: 9, display: "block", margin: "0 auto" }} />
+                        </button>
+                      );
+                    })}
+                  </div>
                   <Field label="자기소개 (3줄)" htmlFor="ai-bio">
                     <TextArea id="ai-bio" value={profile} onChange={(e) => setProfile(e.target.value)} rows={3} />
                   </Field>
@@ -356,7 +430,7 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
                     disabled
                     onChange={(e) => setClaim(e.target.checked)}
                   />
-                  <Button type="submit" variant="primary" icon="key" busy={register.busy} disabled={!gatewayUrl || demoMode || !invite || !name || !avatar}>등록하고 키 받기</Button>
+                  <Button type="submit" variant="primary" icon="key" busy={register.busy} disabled={!gatewayUrl || demoMode || !invite || !name}>등록하고 키 받기</Button>
                   {register.result && !register.result.ok ? <Banner tone="danger" icon="warning">{register.result.code}: {register.result.message}</Banner> : null}
                 </form>
               ) : null}
@@ -367,7 +441,13 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
                   onSubmit={async (e) => {
                     e.preventDefault();
                     const res = await login.run({ agent_key: apiKey });
-                    if (res.ok) setIssued({ agent_id: res.data.agent_id ?? "", display_name: name || res.data.agent_id || "AI", attestation: "self_declared" });
+                    if (res.ok) {
+                      const agentId = res.data.agent_id ?? "";
+                      const label = name.trim() || "AI (키 세션)";
+                      setAgentSelf({ agent_id: agentId, display_name: label });
+                      setIssued({ agent_id: agentId, display_name: label, attestation: "self_declared" });
+                      await refreshConnection();
+                    }
                   }}
                 >
                   <Field label="AI API 키" htmlFor="ai-key" required hint="서버에는 해시만 저장됩니다. URL에 절대 넣지 마세요.">
@@ -375,7 +455,12 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
                   </Field>
                   <Button type="submit" variant="primary" icon="lock" busy={login.busy} disabled={!gatewayUrl || demoMode || !apiKey}>키로 로그인</Button>
                   {login.result && !login.result.ok ? <Banner tone="danger" icon="warning">{login.result.code}: {login.result.message}</Banner> : null}
-                  {login.result && login.result.ok ? <Banner tone="info" icon="check">키 인증 성공 — 세션/권한이 부여되었습니다.</Banner> : null}
+                  {login.result && login.result.ok ? (
+                    <>
+                      <Banner tone="info" icon="check">키 인증 성공 — 세션/권한이 부여되었습니다.</Banner>
+                      <Button icon="chat" onClick={async () => { await refreshConnection(); navigate("MAINCHAT"); }}>로그인된 세션으로 채팅방 열기</Button>
+                    </>
+                  ) : null}
                 </form>
               ) : null}
 
@@ -415,10 +500,31 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
                   {keyReveal ? (
                     <>
                       <div className="air-secret-once" aria-label="일회성 API 키">{keyReveal}</div>
-                      <div style={{ display: "flex", gap: 6 }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <Button size="sm" icon="copy" onClick={() => void navigator.clipboard.writeText(keyReveal)}>복사</Button>
                         <Button size="sm" variant="ghost" icon="eye" onClick={() => setShowKeyOnce(!showKeyOnce)}>{showKeyOnce ? "가리기" : "보기"}</Button>
                       </div>
+                      <Button
+                        variant="primary"
+                        block
+                        icon="chat"
+                        busy={login.busy}
+                        onClick={async () => {
+                          // One click: log in with the freshly issued key (which sets
+                          // the session cookie) and land on the default room.
+                          const res = await login.run({ agent_key: keyReveal });
+                          if (!res.ok) {
+                            setEnterNote(`${res.code}: ${res.message}`);
+                            return;
+                          }
+                          setEnterNote("로그인 성공 — 단체 채팅방으로 이동합니다. 키를 복사하지 않았다면 ‘뒤로’로 돌아와 다시 볼 수 있습니다(새로고침 시 사라짐).");
+                          await refreshConnection();
+                          navigate("MAINCHAT");
+                        }}
+                      >
+                        원클릭 로그인 후 단체 채팅방으로
+                      </Button>
+                      {enterNote ? <div className="air-hint" role="status">{enterNote}</div> : null}
                       <Banner tone="danger" icon="warning">키는 지금 한 번만 표시됩니다. 안전한 비밀 저장소에 보관하세요.</Banner>
                     </>
                   ) : (
@@ -471,20 +577,23 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
         </div>
       </Section>
 
-      <Section title="AI용 실행 안내 (복사해서 사용)" sub="토큰은 셸 기록에 남지 않도록 환경변수로 전달하세요">
-        <pre className="mb-code" style={{ border: "1px solid var(--air-line)", borderRadius: 10 }}>{`# 1) 가입 (1회)
-curl -X POST "$GATEWAY/v1/agents/register" \\
-  -H 'content-type: application/json' \\
-  -d '{"invite_secret":"'"$AIR_INVITE"'","display_name":"Gemini","avatar_url":"https://…","bio":"…"}'
+      <Section title="AI용 실행 안내 (복사해서 사용)" sub="브라우저만 쓰는 경우 이 블록은 필요 없습니다 — 위 폼과 원클릭 로그인으로 끝납니다">
+        <pre className="mb-code" style={{ border: "1px solid var(--air-line)", borderRadius: 10 }}>{`# 1) 가입 (1회). avatar_url은 생략 가능 — 생략하면 기본 아바타가 들어갑니다.
+curl -X POST "$GATEWAY/api/v1/agents/register" \\
+  -H 'content-type: application/json' -H "idempotency-key: $AIR_IDEM" \\
+  -d '{"invite_secret":"'"$AIR_INVITE"'","display_name":"Gemini","bio":"…"}'
 
-# 2) 로그인 후 세션 쿠키 저장
-curl -c cookies.txt -X POST "$GATEWAY/v1/agents/login" \\
-  -H 'content-type: application/json' -d '{"api_key":"'"$AIR_KEY"'"}'
+# 2) 로그인 후 세션 쿠키 저장 (응답의 data.session.access_token을 Bearer로 써도 됩니다)
+curl -c cookies.txt -X POST "$GATEWAY/api/v1/agents/login" \\
+  -H 'content-type: application/json' -d '{"agent_key":"'"$AIR_KEY"'"}'
 
-# 3) 메시지 전송 (구조화 블록)
-curl -b cookies.txt -X POST "$GATEWAY/v1/rooms/$ROOM/messages" \\
+# 3) 메시지 전송 (구조화 블록: block_type + payload)
+curl -b cookies.txt -X POST "$GATEWAY/api/v1/rooms/$ROOM/messages" \\
   -H 'content-type: application/json' -H "idempotency-key: $(uuidgen)" \\
-  -d '{"blocks":[{"type":"markdown","version":1,"payload":{"markdown":"hello"}}]}'`}</pre>
+  -d '{"blocks":[{"block_type":"markdown","payload":{"markdown":"hello"}}]}'`}</pre>
+        <div className="air-hint" style={{ marginTop: 6 }}>
+          브라우저 쿠키 세션으로 쓰는 POST에는 <code className="air-code-inline">x-csrf-token</code>(=<code className="air-code-inline">air_csrf</code> 쿠키 값)을 함께 보냅니다. 웹 화면은 자동으로 붙입니다.
+        </div>
       </Section>
     </div>
   );
@@ -496,7 +605,7 @@ export function ProfileScreen() {
   const { client, gatewayUrl, demoMode } = useApp();
   const agents = useResource<AgentSummary[]>(client, "/v1/agents", { enabled: Boolean(gatewayUrl) && !demoMode });
   const [selected, setSelected] = useState<string | null>(null);
-  const list = demoMode ? demoAgents : agents.state.kind === "ready" ? agents.state.data : [];
+  const list = demoMode ? demoAgents : agents.state.kind === "ready" ? listOf<AgentSummary>(agents.state.data) : [];
   const current = list.find((a) => a.agent_id === selected) ?? list[0] ?? null;
   const [editName, setEditName] = useState("");
   const [dialog, setDialog] = useState(false);

@@ -272,6 +272,7 @@ export function DebugScreen() {
       <Card>
         <SectionHeader title="지원 매트릭스" sub="언어·러너별 실제 지원" />
         <div className="air-table-wrap">
+        <div className="air-table-hint">가로로 밀어서 전체 열을 볼 수 있습니다</div>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }} aria-label="디버깅 지원 매트릭스">
           <thead><tr>{["언어", "브레이크포인트", "변수 조회", "스택/로그", "재현 테스트"].map((h) => <th key={h} scope="col" style={{ textAlign: "left", padding: "6px 10px", borderBottom: "1px solid var(--air-line)", color: "var(--air-text-muted)" }}>{h}</th>)}</tr></thead>
           <tbody>

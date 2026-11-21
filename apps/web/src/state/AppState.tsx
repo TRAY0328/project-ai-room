@@ -25,6 +25,13 @@ interface AppContextValue {
   refreshConnection: () => Promise<void>;
   session: OwnerSessionDto | null;
   setSession: (session: OwnerSessionDto | null) => void;
+  /**
+   * Who the browser is posting as. An owner comes from `session`; an AI that
+   * joined by key has no owner session, so the name it registered with is kept
+   * here (display only) and its own messages are signed with that name.
+   */
+  self: { actor_id: string; display_name: string; kind: "owner" | "agent" };
+  setAgentSelf: (self: { agent_id: string; display_name: string } | null) => void;
   demoMode: boolean;
   setDemoMode: (on: boolean) => void;
   outbox: OutboxItem[];
@@ -113,7 +120,19 @@ export function AppStateProvider({ children, initialGateway = null }: { children
     detail: gatewayUrl ? "게이트웨이 확인 중" : "게이트웨이 URL이 설정되지 않았습니다",
     checkedAt: null,
   });
-  const [outbox, setOutbox] = useState<OutboxItem[]>(() => loadOutbox());
+  const [outbox, setOutboxState] = useState<OutboxItem[]>(() => loadOutbox());
+  /**
+   * The queue is read again the instant it changes. Without this, `send()` called
+   * `flushOutbox()` in the same tick as `enqueueMessage()` and the flush saw the
+   * previous array — the message stayed "전송 대기" even after the server stored it.
+   */
+  const outboxRef = useRef<OutboxItem[]>(outbox);
+  const setOutbox = useCallback((update: (prev: OutboxItem[]) => OutboxItem[]) => {
+    const next = update(outboxRef.current);
+    outboxRef.current = next;
+    setOutboxState(next);
+  }, []);
+  const [agentSelf, setAgentSelfState] = useState<{ agent_id: string; display_name: string } | null>(null);
   const [lastFlush, setLastFlush] = useState<{ at: number; sent: number; failed: number } | null>(null);
   const flushing = useRef(false);
 
@@ -126,6 +145,16 @@ export function AppStateProvider({ children, initialGateway = null }: { children
     setSessionState(next);
     writeStorage(OWNER_KEY, next === null ? null : JSON.stringify({ owner_id: next.owner_id, display_name: next.display_name, email: next.email ?? undefined, role: "owner" }));
   }, []);
+
+  const setAgentSelf = useCallback((next: { agent_id: string; display_name: string } | null) => {
+    setAgentSelfState(next);
+  }, []);
+
+  const self = useMemo<{ actor_id: string; display_name: string; kind: "owner" | "agent" }>(() => {
+    if (session !== null) return { actor_id: session.owner_id, display_name: session.display_name, kind: "owner" };
+    if (agentSelf !== null) return { actor_id: agentSelf.agent_id, display_name: agentSelf.display_name, kind: "agent" };
+    return { actor_id: "self", display_name: "나 (이 브라우저)", kind: "agent" };
+  }, [session, agentSelf]);
 
   const setGatewayUrl = useCallback((url: string | null) => {
     const clean = url?.trim().replace(/\/+$/, "") || null;
@@ -154,11 +183,14 @@ export function AppStateProvider({ children, initialGateway = null }: { children
       setConnection({ state: "degraded", detail: `게이트웨이 응답 ${health.status}: ${health.message}`, checkedAt: Date.now() });
       return;
     }
-    const auth = await client.request<unknown>("GET", "/v1/agents");
+    const auth = await client.request<unknown>("GET", "/v1/rooms");
     if (auth.ok) {
       // The cookie session survived a reload: keep the display name, drop the
       // hint only when the server says the session is gone.
-      setConnection({ state: "ready", detail: "게이트웨이 정상 · 소유자 세션 유효", checkedAt: Date.now() });
+      // `/v1/rooms` is readable by an owner *and* by an agent (it lists the rooms
+      // that identity belongs to), so an AI that joined from the browser sees a
+      // ready connection instead of a false "로그인 필요".
+      setConnection({ state: "ready", detail: "게이트웨이 정상 · 세션 유효", checkedAt: Date.now() });
     } else if (auth.status === 401) {
       setSessionState((prev) => {
         if (prev !== null) writeStorage(OWNER_KEY, null);
@@ -201,7 +233,7 @@ export function AppStateProvider({ children, initialGateway = null }: { children
     let sent = 0;
     let failed = 0;
     try {
-      const snapshot = outbox.filter((item) => item.state !== "sending");
+      const snapshot = outboxRef.current.filter((item) => item.state !== "sending");
       for (const item of snapshot) {
         setOutbox((prev) => prev.map((m) => (m.id === item.id ? { ...m, state: "sending", attempts: m.attempts + 1 } : m)));
         const result = await client.request<{ message_id?: string }>("POST", `/v1/rooms/${encodeURIComponent(item.roomId)}/messages`, {
@@ -227,7 +259,7 @@ export function AppStateProvider({ children, initialGateway = null }: { children
       flushing.current = false;
       setLastFlush({ at: Date.now(), sent, failed });
     }
-  }, [client, gatewayUrl, outbox]);
+  }, [client, gatewayUrl, setOutbox]);
 
   // Auto-flush when the gateway comes back and there is queued work.
   useEffect(() => {
@@ -245,8 +277,8 @@ export function AppStateProvider({ children, initialGateway = null }: { children
   }, []);
 
   const value = useMemo<AppContextValue>(
-    () => ({ client, gatewayUrl, setGatewayUrl, connection, refreshConnection, session, setSession, demoMode, setDemoMode, outbox, enqueueMessage, flushOutbox, retryOutbox, discardOutbox, lastFlush }),
-    [client, gatewayUrl, setGatewayUrl, connection, refreshConnection, session, setSession, demoMode, setDemoMode, outbox, enqueueMessage, flushOutbox, retryOutbox, discardOutbox, lastFlush],
+    () => ({ client, gatewayUrl, setGatewayUrl, connection, refreshConnection, session, setSession, self, setAgentSelf, demoMode, setDemoMode, outbox, enqueueMessage, flushOutbox, retryOutbox, discardOutbox, lastFlush }),
+    [client, gatewayUrl, setGatewayUrl, connection, refreshConnection, session, setSession, self, setAgentSelf, demoMode, setDemoMode, outbox, enqueueMessage, flushOutbox, retryOutbox, discardOutbox, lastFlush],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

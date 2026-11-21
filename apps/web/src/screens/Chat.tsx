@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Banner, Button, Card, Dialog, Field, Icon, IconButton, Reveal, SectionHeader, Tabs, TextArea, TextInput } from "@ai-room/design-system";
 import { useApp } from "../state/AppState.js";
-import { useResource, relativeTime } from "../api/hooks.js";
+import { useResource, relativeTime, listOf } from "../api/hooks.js";
 import { RoomStream, type StreamStatus } from "../api/realtime.js";
 import { newIdempotencyKey } from "../api/client.js";
 import type { AgentSummary, MemoryRecordDto, MessageDto, RoomSummary, SearchHitDto } from "../api/types.js";
@@ -16,26 +16,29 @@ type Navigate = (id: ScreenId, params?: Record<string, string>) => void;
 function useRooms() {
   const { client, gatewayUrl, demoMode } = useApp();
   const rooms = useResource<RoomSummary[]>(client, "/v1/rooms", { enabled: Boolean(gatewayUrl) && !demoMode, pollMs: 30000 });
-  const list = demoMode ? demoRooms : rooms.state.kind === "ready" ? rooms.state.data : [];
+  const list = demoMode ? demoRooms : rooms.state.kind === "ready" ? listOf<RoomSummary>(rooms.state.data) : [];
   return { list, state: rooms.state, reload: rooms.reload };
 }
 
 /* ----------------------------------------------------------------- MAINCHAT */
 
 export function MainChatScreen({ navigate }: { navigate: Navigate }) {
-  const { client, gatewayUrl, demoMode, outbox, enqueueMessage, flushOutbox, connection } = useApp();
+  const { client, gatewayUrl, demoMode, outbox, enqueueMessage, flushOutbox, connection, self } = useApp();
   const rooms = useRooms();
-  const [roomId, setRoomId] = useState<string>(rooms.list[0]?.room_id ?? "room-default");
+  // No placeholder room id: until the room list arrives there is nothing to
+  // read or write, and guessing "room-default" only produced a 403 and a
+  // message stuck in the outbox.
+  const [roomId, setRoomId] = useState<string>(rooms.list[0]?.room_id ?? "");
   const agentsRes = useResource<AgentSummary[]>(client, "/v1/agents", { enabled: Boolean(gatewayUrl) && !demoMode });
-  const messagesRes = useResource<{ messages?: WireMessage[]; items?: WireMessage[] }>(client, `/v1/rooms/${encodeURIComponent(roomId)}/messages`, {
+  const messagesRes = useResource<{ messages?: WireMessage[]; items?: WireMessage[] }>(client, roomId === "" ? null : `/v1/rooms/${encodeURIComponent(roomId)}/messages`, {
     enabled: Boolean(gatewayUrl) && !demoMode,
     query: { limit: 50 },
   });
 
-  const agentList = demoMode ? demoAgents : agentsRes.state.kind === "ready" ? agentsRes.state.data : [];
+  const agentList = demoMode ? demoAgents : agentsRes.state.kind === "ready" ? listOf<AgentSummary>(agentsRes.state.data) : [];
   const agentName = (id: string): string => agentList.find((a) => a.agent_id === id)?.display_name ?? id;
   const baseMessages: MessageDto[] = demoMode
-    ? demoMessages.filter((m) => m.room_id === roomId || roomId === "room-default")
+    ? demoMessages.filter((m) => m.room_id === roomId)
     : messagesRes.state.kind === "ready"
       ? (messagesRes.state.data.messages ?? messagesRes.state.data.items ?? []).map((m) => normalizeWireMessage(m, agentName))
       : [];
@@ -61,9 +64,9 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
     return merged;
   }, [baseMessages, realtimeMessages]);
 
-  // Realtime room stream: only when a gateway exists. Gaps trigger an HTTPS resync.
+  // Realtime room stream: only when a gateway and a real room exist. Gaps trigger an HTTPS resync.
   useEffect(() => {
-    if (!gatewayUrl || demoMode || !client.baseUrl) {
+    if (!gatewayUrl || demoMode || !client.baseUrl || roomId === "") {
       setLive({ status: "idle", received: 0 });
       return;
     }
@@ -95,7 +98,17 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
   }, [roomId]);
 
   const room = rooms.list.find((r) => r.room_id === roomId) ?? null;
+  const roomReady = room !== null;
   const pendingHere = outbox.filter((o) => o.roomId === roomId && (o.state === "pending" || o.state === "failed"));
+
+  // The room list arrives after the first render: move to the real default room
+  // once it exists instead of keeping the placeholder id forever.
+  useEffect(() => {
+    if (rooms.list.length > 0 && !rooms.list.some((r) => r.room_id === roomId)) {
+      setRoomId(rooms.list[0]!.room_id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rooms.list]);
 
   const send = async (blocks: MessageDto["blocks"]) => {
     enqueueMessage(roomId, blocks);
@@ -218,13 +231,14 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
             }))}
             pending={pendingHere.map((item) => ({ item }))}
             handlers={handlers}
+            self={self}
           />
 
           <Composer
             roomId={roomId}
             agents={agentList.map((a) => ({ agent_id: a.agent_id, display_name: a.display_name, kind: a.kind ?? "agent" }))}
             onSend={(blocks) => void send(blocks)}
-            disabled={false}
+            disabled={!roomReady && !demoMode}
             replyTo={replyTo}
             onCancelReply={() => setReplyTo(null)}
             typing={[]}

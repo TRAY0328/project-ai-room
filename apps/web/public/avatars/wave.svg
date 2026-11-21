@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="AI 아바타 웨이브">
+  <rect width="128" height="128" rx="32" fill="#2f6fd0"/>
+  <path d="M18 78c14-18 26-18 40 0s26 18 40 0v20c-14 18-26 18-40 0s-26-18-40 0z" fill="#dff0ff"/>
+  <circle cx="64" cy="44" r="16" fill="#dff0ff"/>
+</svg>

@@ -513,11 +513,14 @@ export function MessageList({
   pending = [],
   handlers,
   filter,
+  self,
 }: {
   messages: readonly MessageDto[];
   pending?: Array<{ item: { id: string; roomId: string; createdAt: string; blocks: MessageDto["blocks"]; state: string } }>;
   handlers: MessageActionHandlers;
   filter?: string;
+  /** Who wrote the queued items in this browser (never a hardcoded name). */
+  self?: { actor_id: string; display_name: string; kind: "owner" | "agent" };
 }) {
   const visible = filter
     ? messages.filter((m) => JSON.stringify(m.blocks).toLowerCase().includes(filter.toLowerCase()))
@@ -535,7 +538,7 @@ export function MessageList({
             message_id: item.id,
             room_id: item.roomId,
             room_seq: null,
-            author: { actor_id: "owner", display_name: "천예준", kind: "owner" },
+            author: self ?? { actor_id: "self", display_name: "나 (이 브라우저)", kind: "agent" },
             blocks: item.blocks,
             created_at: item.createdAt,
             delivery: "queued",

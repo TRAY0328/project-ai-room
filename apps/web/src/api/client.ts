@@ -117,7 +117,7 @@ export class ApiClient {
           retryable: response.status === 429 || response.status >= 500,
         };
       }
-      return { ok: true, status: response.status, data: payload as T, requestId };
+      return { ok: true, status: response.status, data: unwrapEnvelope(payload) as T, requestId };
     } catch (error) {
       const aborted = error instanceof DOMException && error.name === "AbortError";
       return {
@@ -147,6 +147,19 @@ export class ApiClient {
     if (result.status === 0) return { reachable: false, authenticated: false, detail: result.message };
     return { reachable: true, authenticated: false, detail: `${result.code}: ${result.message}` };
   }
+}
+
+/**
+ * Every API answer is `{ ok: true, data, request_id, … }`. Callers consume the
+ * payload inside `data`, so the envelope is removed here — once — instead of in
+ * every screen. An unwrapped body (a proxy or a test fixture) passes through.
+ */
+function unwrapEnvelope(payload: unknown): unknown {
+  if (payload !== null && typeof payload === "object") {
+    const envelope = payload as { ok?: unknown; data?: unknown };
+    if (envelope.ok === true && "data" in envelope) return envelope.data;
+  }
+  return payload;
 }
 
 function extractError(payload: unknown): { code?: string; message?: string } {
