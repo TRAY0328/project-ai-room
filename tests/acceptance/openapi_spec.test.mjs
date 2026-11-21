@@ -15,7 +15,8 @@ import { fileURLToPath } from "node:url";
 import { runChecks } from "./qa_matrix_runner.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const SPEC = resolve(ROOT, "../work/ai_room_pack/PROJECT_AI_ROOM/api_catalog.json");
+const SPEC_DIR = existsSync(resolve(ROOT, "spec/api_catalog.json")) ? resolve(ROOT, "spec") : resolve(ROOT, "../work/ai_room_pack/PROJECT_AI_ROOM");
+const SPEC = resolve(SPEC_DIR, "api_catalog.json");
 const OPENAPI = join(ROOT, "docs/api/openapi.json");
 
 async function loadDoc() {
@@ -66,7 +67,7 @@ test("OpenAPI: 모든 오퍼레이션에 권한 액션·수용 테스트 ID·보
   const doc = await loadDoc();
   const schemeNames = new Set(Object.keys(doc.components.securitySchemes));
   const qaIds = new Set();
-  const matrix = JSON.parse(await readFile(resolve(ROOT, "../work/ai_room_pack/PROJECT_AI_ROOM/qa_matrix.json"), "utf8"));
+  const matrix = JSON.parse(await readFile(resolve(SPEC_DIR, "qa_matrix.json"), "utf8"));
   for (const entries of Object.values(matrix)) for (const entry of entries) qaIds.add(entry.id);
 
   for (const [path, item] of Object.entries(doc.paths)) {

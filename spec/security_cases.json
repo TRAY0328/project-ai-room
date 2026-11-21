@@ -1,0 +1,302 @@
+[
+  {
+    "id": "S01",
+    "threat": "공개 AI 가입 URL 노출",
+    "risk": "무제한 스팸 가입",
+    "required_control": "초대 비밀+레이트리밋+남용 감지"
+  },
+  {
+    "id": "S02",
+    "threat": "초대 키 무차별 대입",
+    "risk": "등록 우회",
+    "required_control": "상수 시간 비교+시도 예산"
+  },
+  {
+    "id": "S03",
+    "threat": "AI 키 탈취",
+    "risk": "다른 AI 사칭",
+    "required_control": "키 검증+회전+폐기"
+  },
+  {
+    "id": "S04",
+    "threat": "자기신고 공급자",
+    "risk": "ChatGPT 제공자 사칭",
+    "required_control": "별도 공식 검증 배지"
+  },
+  {
+    "id": "S05",
+    "threat": "AI 프로필 수정",
+    "risk": "다른 AI 이름 변경",
+    "required_control": "actor ID 비교"
+  },
+  {
+    "id": "S06",
+    "threat": "AI 관리자 API 접근",
+    "risk": "사람 권한 탈취",
+    "required_control": "owner session only"
+  },
+  {
+    "id": "S07",
+    "threat": "파일 ID 열거",
+    "risk": "비공개 파일 노출",
+    "required_control": "ID 비예측+ACL"
+  },
+  {
+    "id": "S08",
+    "threat": "다운로드 URL 공유",
+    "risk": "외부 장기 접근",
+    "required_control": "단기 URL+필요시 1회"
+  },
+  {
+    "id": "S09",
+    "threat": "경로 ../",
+    "risk": "프로젝트 외 파일 접근",
+    "required_control": "정규화+루트 경계"
+  },
+  {
+    "id": "S10",
+    "threat": "심볼릭 링크",
+    "risk": "허용 루트 우회",
+    "required_control": "대상 경계 확인"
+  },
+  {
+    "id": "S11",
+    "threat": "ZIP slip",
+    "risk": "압축 해제 경로 탈출",
+    "required_control": "entry path 검사"
+  },
+  {
+    "id": "S12",
+    "threat": "ZIP bomb",
+    "risk": "자원 고갈",
+    "required_control": "압축 비율+총 용량 제한"
+  },
+  {
+    "id": "S13",
+    "threat": "HTML 첨부",
+    "risk": "스크립트 실행",
+    "required_control": "격리 미리보기+attachment"
+  },
+  {
+    "id": "S14",
+    "threat": "SVG 첨부",
+    "risk": "스크립트 삽입",
+    "required_control": "sandbox 또는 다운로드"
+  },
+  {
+    "id": "S15",
+    "threat": "Markdown URL",
+    "risk": "javascript 링크",
+    "required_control": "허용 프로토콜 정책"
+  },
+  {
+    "id": "S16",
+    "threat": "스크립트 코드블록",
+    "risk": "실행 코드 주입",
+    "required_control": "텍스트로 렌더링"
+  },
+  {
+    "id": "S17",
+    "threat": "SQL 인젝션",
+    "risk": "DB 조작",
+    "required_control": "prepared statements"
+  },
+  {
+    "id": "S18",
+    "threat": "대용량 정규식",
+    "risk": "정규식 DoS",
+    "required_control": "입력 길이/패턴 제한"
+  },
+  {
+    "id": "S19",
+    "threat": "AI 메시지 주입",
+    "risk": "권한 지시 위장",
+    "required_control": "도구·데이터 분리"
+  },
+  {
+    "id": "S20",
+    "threat": "GitHub Issue 주입",
+    "risk": "권한 없는 dispatch",
+    "required_control": "정책 실행 게이트"
+  },
+  {
+    "id": "S21",
+    "threat": "Webhook 위조",
+    "risk": "가짜 CI 성공",
+    "required_control": "HMAC+조회 재검증"
+  },
+  {
+    "id": "S22",
+    "threat": "Webhook 재생",
+    "risk": "중복 PR/상태 전이",
+    "required_control": "delivery id uniqueness"
+  },
+  {
+    "id": "S23",
+    "threat": "GitHub OAuth state 변경",
+    "risk": "연동 계정 탈취",
+    "required_control": "state nonce PKCE"
+  },
+  {
+    "id": "S24",
+    "threat": "GitHub App 토큰 유출",
+    "risk": "repo 침해",
+    "required_control": "최소 권한+단기 토큰"
+  },
+  {
+    "id": "S25",
+    "threat": "PR workflow 수정",
+    "risk": "필수 검사 제거",
+    "required_control": "보호·review·workflow permission"
+  },
+  {
+    "id": "S26",
+    "threat": "PR→privileged workflow",
+    "risk": "secret 유출",
+    "required_control": "pull_request_target 위험 차단"
+  },
+  {
+    "id": "S27",
+    "threat": "악성 패키지 설치",
+    "risk": "CI credential 탈취",
+    "required_control": "무비밀 CI+lockfile"
+  },
+  {
+    "id": "S28",
+    "threat": "아티팩트 오염",
+    "risk": "다른 빌드 결과 교체",
+    "required_control": "run SHA+file SHA 검증"
+  },
+  {
+    "id": "S29",
+    "threat": "검증 안 한 모델 응답",
+    "risk": "허위 작업 완료",
+    "required_control": "증거 필수 완료 게이트"
+  },
+  {
+    "id": "S30",
+    "threat": "AI 반복 발언",
+    "risk": "무료 한도 소진",
+    "required_control": "causation depth+quota"
+  },
+  {
+    "id": "S31",
+    "threat": "외부 URL 요청",
+    "risk": "SSRF",
+    "required_control": "allowlist+IP/DNS 차단"
+  },
+  {
+    "id": "S32",
+    "threat": "로그 비밀 누출",
+    "risk": "API 키 노출",
+    "required_control": "레드랙션+권한 로그"
+  },
+  {
+    "id": "S33",
+    "threat": "승인 후 코드 변경",
+    "risk": "승인 우회",
+    "required_control": "digest invalidation"
+  },
+  {
+    "id": "S34",
+    "threat": "병합 head SHA 교체",
+    "risk": "검증 우회",
+    "required_control": "SHA bound check"
+  },
+  {
+    "id": "S35",
+    "threat": "오래된 lease 늦은 응답",
+    "risk": "중복 실행",
+    "required_control": "fencing token"
+  },
+  {
+    "id": "S36",
+    "threat": "프로젝트 링크 공유",
+    "risk": "cross-project leak",
+    "required_control": "공유 ACL+데이터 범위"
+  },
+  {
+    "id": "S37",
+    "threat": "검색 인덱스 잔존",
+    "risk": "삭제 데이터 노출",
+    "required_control": "delete propagation"
+  },
+  {
+    "id": "S38",
+    "threat": "복원 후 삭제 데이터 재등장",
+    "risk": "삭제권 무효화",
+    "required_control": "tombstone replay"
+  },
+  {
+    "id": "S39",
+    "threat": "백업 키 노출",
+    "risk": "전체 기록 복호화",
+    "required_control": "키 분리+권한"
+  },
+  {
+    "id": "S40",
+    "threat": "클라우드 무료 한도 오판",
+    "risk": "원치 않는 과금",
+    "required_control": "보수적 쿼터 게이트"
+  },
+  {
+    "id": "S41",
+    "threat": "사용자 승인 클릭재생",
+    "risk": "잘못된 위험 작업 승인",
+    "required_control": "nonce+대상 digest+만료"
+  },
+  {
+    "id": "S42",
+    "threat": "네트워크 재접속 권한 변경",
+    "risk": "회수 이후 접속",
+    "required_control": "WS 재인가+권한 리비전"
+  },
+  {
+    "id": "S43",
+    "threat": "앱 클라이언트에 secret 번들",
+    "risk": "앱 추출로 토큰 탈취",
+    "required_control": "서버 비밀 분리"
+  },
+  {
+    "id": "S44",
+    "threat": "APK 키 임의 다운로드",
+    "risk": "앱 변조",
+    "required_control": "서명키 접근 통제"
+  },
+  {
+    "id": "S45",
+    "threat": "관리자 전체 삭제",
+    "risk": "대규모 손실",
+    "required_control": "영향 예측+승인+복원 계획"
+  },
+  {
+    "id": "S46",
+    "threat": "악성 외부 링크",
+    "risk": "피싱·원치 않는 전송",
+    "required_control": "외부 URL 안전 안내"
+  },
+  {
+    "id": "S47",
+    "threat": "메시지 수신 확인 위조",
+    "risk": "거짓 AI 상태",
+    "required_control": "인증된 공급자 receipt"
+  },
+  {
+    "id": "S48",
+    "threat": "테스트 스킵",
+    "risk": "허위 PASS",
+    "required_control": "required test manifest"
+  },
+  {
+    "id": "S49",
+    "threat": "비밀 회전 실패",
+    "risk": "오래된 키 계속 사용",
+    "required_control": "폐기 시 세션 무효화"
+  },
+  {
+    "id": "S50",
+    "threat": "외부 사용조건 변경",
+    "risk": "약관 위반 자동화",
+    "required_control": "공식 문서 재검증+비활성"
+  }
+]

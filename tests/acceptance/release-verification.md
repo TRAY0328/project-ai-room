@@ -1,13 +1,13 @@
 # 릴리스 게이트 검증 결과 (자동 생성)
 
-- 실행: 2026-11-21T05:05:49.449Z
+- 실행: 2026-11-21T05:19:59.216Z
 - 판정: **INCOMPLETE**
 - 증거 원장: docs/evidence/release-evidence.json
 
 | Gate | 상태 | 내용 | 근거 |
 |---|---|---|---|
 | G-01 | BLOCKED | Q001–Q041 추적표 전 항목 구현 및 테스트 | QA 103항목=BLOCKED (QA 103항목: PASS 46, BLOCKED 8, NOT_TESTED 25, PARTIAL 24 (103항목)) |
-| G-02 | BLOCKED | 지정 모든 실제 AI의 공식 연결·자율성·코드 능력 | provider-gate=BLOCKED (Q039 BLOCKED_EXTERNAL_DEPENDENCY, blocker 8건); required-roster=PASS (../work/ai_room_pack/PROJECT_AI_ROOM/required_agents.example.json: 필수 8종) |
+| G-02 | BLOCKED | 지정 모든 실제 AI의 공식 연결·자율성·코드 능력 | provider-gate=BLOCKED (Q039 BLOCKED_EXTERNAL_DEPENDENCY, blocker 8건); required-roster=PASS (spec/required_agents.example.json: 필수 8종) |
 | G-03 | BLOCKED | 다중 실제 AI의 상호 작업 종단간 시연 | ledger:G-03=BLOCKED (1개 증거 · Pickle(에이전트) — qa_matrix_runner/verify-release 실행 · 지정 AI 8종의 키·계정이 없다(Q039 blocker 8/8). 실제 다중 AI 협업 시연 불가.) |
 | G-04 | BLOCKED | GitHub PR, Actions 빌드/테스트, 검증 병합 | ledger:G-04=BLOCKED (1개 증거 · Pickle(에이전트) — gh/gh api 실행 결과 · GitHub 연결에 저장소 생성 권한이 없어 비공개 리포를 만들지 못했다. Run ID·PR 증거 없음.) |
 | G-05 | PARTIAL | 웹 앱 실제 로그인·대화·프로젝트·IDE | web-build=PASS (apps/web/dist 파일 4개); ledger:G-05=PARTIAL (2개 증거 · Pickle(에이전트) — 원격 HTTP 실측 · 홈/포털문서/헬스/인증가드 라이브 200·401 확인. 소유자 계정 미생성으로 로그인·대화·IDE 실사용 시연은 미실시.) |

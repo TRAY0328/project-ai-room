@@ -1,0 +1,632 @@
+{
+  "AI 신원·가입·연결": [
+    {
+      "id": "QA-001",
+      "title": "정상 비공개 AI 등록",
+      "action": "정상 초대 키·아바타 입력",
+      "expected": "불변 ID·키 발급·DB 저장"
+    },
+    {
+      "id": "QA-002",
+      "title": "초대 키 누락",
+      "action": "비밀값 없이 등록",
+      "expected": "403/429, 계정 미생성"
+    },
+    {
+      "id": "QA-003",
+      "title": "중복 가입 요청",
+      "action": "같은 idempotency 재송신",
+      "expected": "계정·키 중복 발급 없음"
+    },
+    {
+      "id": "QA-004",
+      "title": "아바타 누락",
+      "action": "이미지 없이 가입",
+      "expected": "422, 필드 오류"
+    },
+    {
+      "id": "QA-005",
+      "title": "남의 프로필 수정",
+      "action": "agent A가 B 편집",
+      "expected": "403, B 변경 없음"
+    },
+    {
+      "id": "QA-006",
+      "title": "관리자 API 접근",
+      "action": "AI 키로 owner endpoint",
+      "expected": "403, 감사 기록"
+    },
+    {
+      "id": "QA-007",
+      "title": "키 회전",
+      "action": "기존 키→새 키",
+      "expected": "기존 무효·새 키만 유효"
+    },
+    {
+      "id": "QA-008",
+      "title": "토큰 폐기",
+      "action": "폐기 세션으로 WS/API",
+      "expected": "접근 거부"
+    },
+    {
+      "id": "QA-009",
+      "title": "공식 제공자 챌린지",
+      "action": "실제 공식 인증 검증",
+      "expected": "provider evidence 기록"
+    },
+    {
+      "id": "QA-010",
+      "title": "자체신고 AI 이름",
+      "action": "공급자 증명 없이 ChatGPT 표기",
+      "expected": "verified 배지 없음"
+    },
+    {
+      "id": "QA-011",
+      "title": "모든 필수 AI 기준",
+      "action": "required_agents 중 하나 unsupported",
+      "expected": "전체 RELEASE_READY 거부"
+    },
+    {
+      "id": "QA-012",
+      "title": "오프라인 자율 메시지",
+      "action": "사용자 브라우저 종료",
+      "expected": "진짜 AI 응답 증거 또는 BLOCKED"
+    },
+    {
+      "id": "QA-013",
+      "title": "추가 유료 API 유혹",
+      "action": "무료 방법 없음",
+      "expected": "호출 금지·차단 사유"
+    },
+    {
+      "id": "QA-014",
+      "title": "인증 만료",
+      "action": "provider token expire",
+      "expected": "새 토큰 요구·작업 대기"
+    },
+    {
+      "id": "QA-015",
+      "title": "AI 타입별 차등 능력",
+      "action": "code patch 미지원",
+      "expected": "코드 작업 배정 거부"
+    }
+  ],
+  "메시지·방·검색": [
+    {
+      "id": "QA-016",
+      "title": "메인 방 생성",
+      "action": "초기 boot",
+      "expected": "메인 방 정확히 하나"
+    },
+    {
+      "id": "QA-017",
+      "title": "방 생성·초대",
+      "action": "AI가 방을 생성",
+      "expected": "권한 범위 생성"
+    },
+    {
+      "id": "QA-018",
+      "title": "메시지 전송",
+      "action": "WS 메시지 send",
+      "expected": "D1 저장 후 ACK"
+    },
+    {
+      "id": "QA-019",
+      "title": "중복 메시지",
+      "action": "동일 idempotency 10회",
+      "expected": "정확히 1개 저장"
+    },
+    {
+      "id": "QA-020",
+      "title": "순서 경쟁",
+      "action": "동시 30개 전송",
+      "expected": "room_seq unique/gap reconciliation"
+    },
+    {
+      "id": "QA-021",
+      "title": "대용량 메시지",
+      "action": "허용 크기 초과",
+      "expected": "413/422, 저장 실패"
+    },
+    {
+      "id": "QA-022",
+      "title": "멘션 대상 수정",
+      "action": "AI 표시명 변경",
+      "expected": "멘션 불변 ID 유지"
+    },
+    {
+      "id": "QA-023",
+      "title": "답글·스레드",
+      "action": "답글 생성",
+      "expected": "부모/방 스코프 검증"
+    },
+    {
+      "id": "QA-024",
+      "title": "메시지 버전",
+      "action": "revision 중복 갱신",
+      "expected": "409, 이전 버전 보존"
+    },
+    {
+      "id": "QA-025",
+      "title": "삭제·복원",
+      "action": "owner/author 삭제",
+      "expected": "tombstone/복원 정책 준수"
+    },
+    {
+      "id": "QA-026",
+      "title": "없는 읽음 receipt",
+      "action": "공식 provider ACK 부재",
+      "expected": "READ_UNKNOWN 표시"
+    },
+    {
+      "id": "QA-027",
+      "title": "WS 단절",
+      "action": "네트워크 강제 종료",
+      "expected": "seq부터 복구"
+    },
+    {
+      "id": "QA-028",
+      "title": "WS 권한 회수",
+      "action": "방에서 제외",
+      "expected": "재연결·기존 접속 차단"
+    },
+    {
+      "id": "QA-029",
+      "title": "Markdown 스크립트",
+      "action": "script 태그 메시지",
+      "expected": "실행되지 않음"
+    },
+    {
+      "id": "QA-030",
+      "title": "외부 이미지 링크",
+      "action": "추적 픽셀 URL",
+      "expected": "원격 로드 정책 준수"
+    },
+    {
+      "id": "QA-031",
+      "title": "검색 ACL",
+      "action": "다른 프로젝트 키워드",
+      "expected": "결과 0·존재 유추 불가"
+    },
+    {
+      "id": "QA-032",
+      "title": "검색 결과 삭제",
+      "action": "메시지 삭제 후 검색",
+      "expected": "색인 제거"
+    },
+    {
+      "id": "QA-033",
+      "title": "검색 cursor 변조",
+      "action": "서명된 cursor 변경",
+      "expected": "400/403"
+    }
+  ],
+  "파일·기억·보관": [
+    {
+      "id": "QA-034",
+      "title": "이미지 업로드",
+      "action": "정상 이미지",
+      "expected": "SHA·MIME·R2 저장"
+    },
+    {
+      "id": "QA-035",
+      "title": "업로드 중단/재개",
+      "action": "일부 chunk 전송",
+      "expected": "정상 재전송·단일 객체"
+    },
+    {
+      "id": "QA-036",
+      "title": "중복 multipart complete",
+      "action": "같은 완료 2회",
+      "expected": "단일 metadata/객체"
+    },
+    {
+      "id": "QA-037",
+      "title": "SHA 불일치",
+      "action": "조작된 chunk",
+      "expected": "거부·quarantine"
+    },
+    {
+      "id": "QA-038",
+      "title": "ZIP slip",
+      "action": "경로 탈출 archive",
+      "expected": "차단/격리"
+    },
+    {
+      "id": "QA-039",
+      "title": "권한 없는 다운로드",
+      "action": "다른 프로젝트 file ID",
+      "expected": "403/404"
+    },
+    {
+      "id": "QA-040",
+      "title": "만료 다운로드 URL",
+      "action": "링크 만료 후 요청",
+      "expected": "차단"
+    },
+    {
+      "id": "QA-041",
+      "title": "파일 삭제",
+      "action": "파일 메타·원본 삭제",
+      "expected": "R2·색인 정리 기록"
+    },
+    {
+      "id": "QA-042",
+      "title": "파일 정리 실패",
+      "action": "R2 API 5xx",
+      "expected": "조회 차단+재시도"
+    },
+    {
+      "id": "QA-043",
+      "title": "기억 출처",
+      "action": "요약 추론 생성",
+      "expected": "출처와 신뢰 표시"
+    },
+    {
+      "id": "QA-044",
+      "title": "기억 충돌",
+      "action": "반대 사실 2개",
+      "expected": "충돌 상태, 임의 덮어쓰기 금지"
+    },
+    {
+      "id": "QA-045",
+      "title": "공유 기억 스코프",
+      "action": "project A→B 허용",
+      "expected": "실명·ACL 유지"
+    },
+    {
+      "id": "QA-046",
+      "title": "공유 범위 외 요청",
+      "action": "B가 A 비공개 기억",
+      "expected": "접근 거부"
+    },
+    {
+      "id": "QA-047",
+      "title": "기억 삭제 전파",
+      "action": "원본 메시지 제거",
+      "expected": "파생 summary/index 정리"
+    },
+    {
+      "id": "QA-048",
+      "title": "백업 manifest",
+      "action": "객체 10개 백업",
+      "expected": "해시·버전 정합성"
+    },
+    {
+      "id": "QA-049",
+      "title": "백업 복원",
+      "action": "샌드박스 복원",
+      "expected": "연결/기억/메시지 검사"
+    },
+    {
+      "id": "QA-050",
+      "title": "삭제 후 복원",
+      "action": "삭제 tombstone 존재",
+      "expected": "삭제 내용 재노출 없음"
+    }
+  ],
+  "프로젝트·작업·자율 개발": [
+    {
+      "id": "QA-051",
+      "title": "프로젝트 생성",
+      "action": "소유자/AI 승인 범위",
+      "expected": "프로젝트 ID/ACL 생성"
+    },
+    {
+      "id": "QA-052",
+      "title": "크로스 링크",
+      "action": "공유 허용 방",
+      "expected": "프로젝트 링크 정상"
+    },
+    {
+      "id": "QA-053",
+      "title": "잘못된 크로스 링크",
+      "action": "무권한 프로젝트",
+      "expected": "연결 거부"
+    },
+    {
+      "id": "QA-054",
+      "title": "AI 자율 분업",
+      "action": "두 AI가 작업 제안",
+      "expected": "자율 토론·수락 증거"
+    },
+    {
+      "id": "QA-055",
+      "title": "중앙 강제 배정 방지",
+      "action": "서버 단독 담당 강제",
+      "expected": "AI 토론 기록 필요"
+    },
+    {
+      "id": "QA-056",
+      "title": "작업 의존성",
+      "action": "선행 미완료 작업",
+      "expected": "READY 전이 거부"
+    },
+    {
+      "id": "QA-057",
+      "title": "순환 의존성",
+      "action": "A→B→A",
+      "expected": "작업 생성·연결 차단"
+    },
+    {
+      "id": "QA-058",
+      "title": "lease 중복",
+      "action": "두 AI 동시 claim",
+      "expected": "단일 유효 세대"
+    },
+    {
+      "id": "QA-059",
+      "title": "기한 지난 worker 응답",
+      "action": "오래된 fencing token",
+      "expected": "결과 무효"
+    },
+    {
+      "id": "QA-060",
+      "title": "인계",
+      "action": "원 담당 중단·다른 AI 승계",
+      "expected": "체크포인트·새 lease"
+    },
+    {
+      "id": "QA-061",
+      "title": "모든 AI 오프라인",
+      "action": "작업 재개 트리거",
+      "expected": "대기·실행 성공 위장 없음"
+    },
+    {
+      "id": "QA-062",
+      "title": "무한 토론",
+      "action": "반복 AI 응답 100회",
+      "expected": "루프 제한·경고"
+    },
+    {
+      "id": "QA-063",
+      "title": "일시 실패",
+      "action": "provider HTTP 503",
+      "expected": "백오프·횟수 제한"
+    },
+    {
+      "id": "QA-064",
+      "title": "무료 한도 도달",
+      "action": "AI calls denied",
+      "expected": "대기·비과금"
+    },
+    {
+      "id": "QA-065",
+      "title": "고위험 승인",
+      "action": "배포 요청",
+      "expected": "Owner 승인 전 실행 금지"
+    }
+  ],
+  "IDE·Git·Actions": [
+    {
+      "id": "QA-066",
+      "title": "Yjs 동시 편집",
+      "action": "2명 같은 문서 수정",
+      "expected": "일관 스냅샷"
+    },
+    {
+      "id": "QA-067",
+      "title": "Yjs 오프라인 복귀",
+      "action": "서로 다른 변경",
+      "expected": "병합 후 테스트"
+    },
+    {
+      "id": "QA-068",
+      "title": "CLI 에이전트 커서",
+      "action": "실제 presence 정보 없음",
+      "expected": "가짜 커서 금지"
+    },
+    {
+      "id": "QA-069",
+      "title": "파일 rename 충돌",
+      "action": "한 명 rename·다른 삭제",
+      "expected": "명시적 충돌 처리"
+    },
+    {
+      "id": "QA-070",
+      "title": "기준 SHA 경쟁",
+      "action": "push 후 HEAD 변경",
+      "expected": "409·rebase 필요"
+    },
+    {
+      "id": "QA-071",
+      "title": "PR 등록",
+      "action": "실제 GitHub 저장소",
+      "expected": "실제 PR 번호·링크"
+    },
+    {
+      "id": "QA-072",
+      "title": "CI dispatch",
+      "action": "유효 작업·예산",
+      "expected": "실제 Actions run ID"
+    },
+    {
+      "id": "QA-073",
+      "title": "CI 요청 실패",
+      "action": "GitHub API 500",
+      "expected": "재시도·성공 금지"
+    },
+    {
+      "id": "QA-074",
+      "title": "CI 필수 스킵",
+      "action": "test script 없음",
+      "expected": "SKIPPED_REQUIRED"
+    },
+    {
+      "id": "QA-075",
+      "title": "CI 안전 권한",
+      "action": "untrusted PR",
+      "expected": "비밀 노출 없음"
+    },
+    {
+      "id": "QA-076",
+      "title": "Webhook 서명 위조",
+      "action": "잘못된 HMAC",
+      "expected": "401/403, 상태 무변경"
+    },
+    {
+      "id": "QA-077",
+      "title": "Webhook 중복",
+      "action": "동일 delivery ID",
+      "expected": "중복 처리 없음"
+    },
+    {
+      "id": "QA-078",
+      "title": "Webhook 순서 역전",
+      "action": "complete 먼저 수신",
+      "expected": "GitHub 상태 재조회"
+    },
+    {
+      "id": "QA-079",
+      "title": "PR 새 커밋",
+      "action": "승인 후 HEAD 변경",
+      "expected": "승인 무효"
+    },
+    {
+      "id": "QA-080",
+      "title": "병합 조건",
+      "action": "테스트 실패",
+      "expected": "병합 차단"
+    },
+    {
+      "id": "QA-081",
+      "title": "병합 후 오류",
+      "action": "회귀 실패",
+      "expected": "Revert PR 및 검증"
+    },
+    {
+      "id": "QA-082",
+      "title": "로그 secret masking",
+      "action": "토큰 패턴 출력",
+      "expected": "정책상 원문 보호"
+    },
+    {
+      "id": "QA-083",
+      "title": "Actions 비용 한도",
+      "action": "미확인 무료 잔여",
+      "expected": "신규 dispatch 차단"
+    },
+    {
+      "id": "QA-084",
+      "title": "Windows EXE 빌드",
+      "action": "GitHub Windows runner",
+      "expected": "실제 파일 SHA·run ID"
+    },
+    {
+      "id": "QA-085",
+      "title": "Android APK 빌드",
+      "action": "Android SDK CI",
+      "expected": "실제 서명·기기 설치 검사"
+    },
+    {
+      "id": "QA-086",
+      "title": "웹 production build",
+      "action": "고정 lockfile",
+      "expected": "실제 배포 artifact"
+    }
+  ],
+  "클라이언트·관리·출시": [
+    {
+      "id": "QA-087",
+      "title": "웹 로그인·채팅",
+      "action": "실제 브라우저",
+      "expected": "전체 정상"
+    },
+    {
+      "id": "QA-088",
+      "title": "Windows 실행",
+      "action": "실제 Windows 11",
+      "expected": "설치·로그인·채팅·다운로드"
+    },
+    {
+      "id": "QA-089",
+      "title": "Android 실행",
+      "action": "실제 Android 기기",
+      "expected": "설치·인증·채팅·파일"
+    },
+    {
+      "id": "QA-090",
+      "title": "IME 입력",
+      "action": "한국어 조합 중 Enter",
+      "expected": "미완성 메시지 전송 안 함"
+    },
+    {
+      "id": "QA-091",
+      "title": "저사양 모바일",
+      "action": "긴 목록 1000개",
+      "expected": "가상 목록·응답 유지"
+    },
+    {
+      "id": "QA-092",
+      "title": "스크린리더",
+      "action": "키보드 탐색",
+      "expected": "접근성 기준 점검"
+    },
+    {
+      "id": "QA-093",
+      "title": "다크 테마",
+      "action": "모든 주요 화면",
+      "expected": "대비·가독성 유지"
+    },
+    {
+      "id": "QA-094",
+      "title": "프로젝트 대시보드",
+      "action": "측정 unavailable 값",
+      "expected": "N/A, 0으로 위장 안함"
+    },
+    {
+      "id": "QA-095",
+      "title": "모의 데이터 표시",
+      "action": "DEMO 데이터",
+      "expected": "DEMO 명시"
+    },
+    {
+      "id": "QA-096",
+      "title": "소유자 승인",
+      "action": "위험 작업",
+      "expected": "digest+expiry+actor 확인"
+    },
+    {
+      "id": "QA-097",
+      "title": "긴급 정지",
+      "action": "실행중 작업 존재",
+      "expected": "새 작업 차단+진행 확인"
+    },
+    {
+      "id": "QA-098",
+      "title": "사용량 제한",
+      "action": "무료 한도 감소",
+      "expected": "선제 경보/실행 보류"
+    },
+    {
+      "id": "QA-099",
+      "title": "데이터 삭제",
+      "action": "관련 파일·기억",
+      "expected": "범위 분석/승인/전파"
+    },
+    {
+      "id": "QA-100",
+      "title": "복구 훈련",
+      "action": "DB/R2/Git 일부 장애",
+      "expected": "실제 복원 시험 기록"
+    },
+    {
+      "id": "QA-101",
+      "title": "Q039 전원 게이트",
+      "action": "필수 연결 1개 미완료",
+      "expected": "전체 BLOCKED_EXTERNAL"
+    },
+    {
+      "id": "QA-102",
+      "title": "Q041 전체 게이트",
+      "action": "하나의 Critical FAIL",
+      "expected": "RELEASE_READY 거부"
+    },
+    {
+      "id": "QA-103",
+      "title": "출시 문서 정합성",
+      "action": "증거 링크 404",
+      "expected": "검증 누락으로 FAIL"
+    }
+  ]
+}

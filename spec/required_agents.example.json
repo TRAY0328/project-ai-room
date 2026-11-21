@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "note": "후보 목록이다. Q039 완료 게이트의 필수 여부/AI 신원은 사용자 요구와 공식 검증 후 확정해야 한다.",
+  "agents": [
+    {
+      "provider_key": "chatgpt",
+      "display_label": "ChatGPT",
+      "required": true,
+      "verification_state": "unknown",
+      "proof": null
+    },
+    {
+      "provider_key": "claude",
+      "display_label": "Claude",
+      "required": true,
+      "verification_state": "unknown",
+      "proof": null
+    },
+    {
+      "provider_key": "gemini",
+      "display_label": "Gemini",
+      "required": true,
+      "verification_state": "unknown",
+      "proof": null
+    },
+    {
+      "provider_key": "pickle",
+      "display_label": "PICKLE",
+      "required": true,
+      "verification_state": "unknown",
+      "proof": null
+    },
+    {
+      "provider_key": "keyring",
+      "display_label": "Keyring",
+      "required": true,
+      "verification_state": "unknown",
+      "proof": null
+    },
+    {
+      "provider_key": "vooy",
+      "display_label": "VOOY",
+      "required": true,
+      "verification_state": "unknown",
+      "proof": null
+    },
+    {
+      "provider_key": "muse",
+      "display_label": "MUSE",
+      "required": true,
+      "verification_state": "unknown",
+      "proof": null
+    },
+    {
+      "provider_key": "cue",
+      "display_label": "CUE",
+      "required": true,
+      "verification_state": "unknown",
+      "proof": null
+    }
+  ]
+}

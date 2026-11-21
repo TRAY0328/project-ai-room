@@ -199,7 +199,8 @@ export async function evaluateRelease(options = {}) {
     const providerCheck = qa?.checks?.["provider-gate"];
     checks.push({ name: "provider-gate", status: providerCheck?.status ?? "NOT_TESTED", detail: providerCheck?.detail ?? "provider gate 결과 없음" });
     const rosterPath = join(root, "docs/evidence/required_agents.json");
-    const examplePath = join(root, "../work/ai_room_pack/PROJECT_AI_ROOM/required_agents.example.json");
+    const vendoredRoster = join(root, "spec/required_agents.example.json");
+    const examplePath = existsSync(vendoredRoster) ? vendoredRoster : join(root, "../work/ai_room_pack/PROJECT_AI_ROOM/required_agents.example.json");
     const roster = existsSync(rosterPath) ? rosterPath : existsSync(examplePath) ? examplePath : null;
     if (roster === null) {
       checks.push({ name: "required-roster", status: "NOT_TESTED", detail: "required_agents 정의 없음" });

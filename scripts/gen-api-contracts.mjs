@@ -7,13 +7,15 @@
  * being present; `npm run verify:contracts` asserts it is in sync.
  */
 import { readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
+const vendored = resolve(repoRoot, "spec/api_catalog.json");
 const catalogPath = process.env.AI_ROOM_API_CATALOG
-  ?? resolve(repoRoot, "../work/ai_room_pack/PROJECT_AI_ROOM/api_catalog.json");
+  ?? (existsSync(vendored) ? vendored : resolve(repoRoot, "../work/ai_room_pack/PROJECT_AI_ROOM/api_catalog.json"));
 const outPath = resolve(repoRoot, "packages/contracts/src/api-catalog.generated.ts");
 
 const raw = JSON.parse(await readFile(catalogPath, "utf8"));

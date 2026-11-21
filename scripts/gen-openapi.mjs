@@ -24,12 +24,16 @@
  *   node scripts/gen-openapi.mjs --print    # print to stdout, write nothing
  */
 import { readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(here, "..");
-const SPEC_DIR = resolve(REPO_ROOT, "../work/ai_room_pack/PROJECT_AI_ROOM");
+// Vendored catalogs first (works in CI / a fresh clone), then the authoring pack.
+const SPEC_DIR = existsSync(resolve(REPO_ROOT, "spec/api_catalog.json"))
+  ? resolve(REPO_ROOT, "spec")
+  : resolve(REPO_ROOT, "../work/ai_room_pack/PROJECT_AI_ROOM");
 const DEFAULT_CATALOG = resolve(SPEC_DIR, "api_catalog.json");
 const DEFAULT_OUT = resolve(REPO_ROOT, "docs/api/openapi.json");
 const CONTRACTS_INDEX = resolve(REPO_ROOT, "packages/contracts/src/index.ts");

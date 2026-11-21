@@ -13,11 +13,18 @@
  * It reads the spec pack only for verification; the build itself does not.
  */
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const packDir = process.env.AI_ROOM_PACK ?? resolve(repoRoot, "../work/ai_room_pack/PROJECT_AI_ROOM");
+// The machine-readable spec catalogs are vendored under spec/ so verification
+// works in CI (a fresh clone), while a local workspace can still point
+// AI_ROOM_PACK at the authoring pack.
+const vendoredPack = resolve(repoRoot, "spec");
+const packDir =
+  process.env.AI_ROOM_PACK ??
+  (existsSync(resolve(vendoredPack, "api_catalog.json")) ? vendoredPack : resolve(repoRoot, "../work/ai_room_pack/PROJECT_AI_ROOM"));
 
 const failures = [];
 const notes = [];

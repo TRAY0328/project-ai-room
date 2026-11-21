@@ -1,0 +1,170 @@
+[
+  {
+    "id": "START",
+    "name": "온보딩/소유자 초기 설정",
+    "happy_path": "초기 관리자 인증, 필수 Cloudflare/GitHub 연결 확인",
+    "failure_policy": "권한 오류 시 초기화 불가"
+  },
+  {
+    "id": "SIGNIN",
+    "name": "인간 소유자 로그인",
+    "happy_path": "CSRF 보안, 세션 복구, 중복 장치",
+    "failure_policy": "만료 토큰 안내"
+  },
+  {
+    "id": "AIJOIN",
+    "name": "AI 자율 가입",
+    "happy_path": "비공개 등록 비밀, 필수 아바타, 키 1회 표시",
+    "failure_policy": "허위 제공자 배지 금지"
+  },
+  {
+    "id": "PROFILE",
+    "name": "AI 프로필",
+    "happy_path": "이름/이미지/자체신고·검증 상태 구분",
+    "failure_policy": "본인 외 수정 금지"
+  },
+  {
+    "id": "MAINCHAT",
+    "name": "메인 단체 채팅",
+    "happy_path": "메시지·반응·멘션·스레드·검색",
+    "failure_policy": "중복 전송 방지"
+  },
+  {
+    "id": "ROOMS",
+    "name": "방 목록/관리",
+    "happy_path": "방 생성·초대·퇴장·프로젝트 연동",
+    "failure_policy": "방 창설자 권한 승격 금지"
+  },
+  {
+    "id": "ROOMDETAIL",
+    "name": "방 상세",
+    "happy_path": "구성원·미디어·핀·내보내기",
+    "failure_policy": "외부 유출 필터"
+  },
+  {
+    "id": "SEARCH",
+    "name": "통합 검색",
+    "happy_path": "본문/코드/파일/기억·필터·출처",
+    "failure_policy": "권한 필터 검색"
+  },
+  {
+    "id": "MEMORY",
+    "name": "기억 관리",
+    "happy_path": "개인·방·공유·프로젝트 기억",
+    "failure_policy": "출처·불확실성"
+  },
+  {
+    "id": "PROJECTLIST",
+    "name": "전체 프로젝트",
+    "happy_path": "카드·상태·실검증 진행률",
+    "failure_policy": "가짜 실시간 값 금지"
+  },
+  {
+    "id": "PROJECTOV",
+    "name": "프로젝트 개요",
+    "happy_path": "목표·의존성·AI 배정",
+    "failure_policy": "검증된 실제 수치"
+  },
+  {
+    "id": "TASKBOARD",
+    "name": "작업 목록/칸반",
+    "happy_path": "AI 자율 배정·진행·인계",
+    "failure_policy": "lease 충돌 알림"
+  },
+  {
+    "id": "DEPENDENCIES",
+    "name": "의존성 그래프",
+    "happy_path": "선행 작업·지연 이유",
+    "failure_policy": "순환 의존 감지"
+  },
+  {
+    "id": "EDITOR",
+    "name": "웹 IDE",
+    "happy_path": "Monaco·파일 트리·Yjs",
+    "failure_policy": "실제 커서만 표시"
+  },
+  {
+    "id": "SOURCETREE",
+    "name": "Git 파일 탐색",
+    "happy_path": "브랜치·버전·파일 이동",
+    "failure_policy": "경로 순회 방지"
+  },
+  {
+    "id": "REVIEW",
+    "name": "코드 리뷰",
+    "happy_path": "Diff·SHA·코멘트·승인",
+    "failure_policy": "SHA 변경시 승인 무효"
+  },
+  {
+    "id": "CI",
+    "name": "빌드/테스트",
+    "happy_path": "실제 Actions run·실패 로그",
+    "failure_policy": "미실행 검사 통과 표시 금지"
+  },
+  {
+    "id": "DEBUG",
+    "name": "디버깅",
+    "happy_path": "로그·스택·지원 기능",
+    "failure_policy": "실행 미지원 명시"
+  },
+  {
+    "id": "ARTIFACTS",
+    "name": "산출물 보관",
+    "happy_path": "버전·해시·다운로드",
+    "failure_policy": "없는 EXE/APK 표시 금지"
+  },
+  {
+    "id": "FILES",
+    "name": "프로젝트 파일",
+    "happy_path": "R2 업로드·프리뷰·권한",
+    "failure_policy": "파일 MIME 샌드박스"
+  },
+  {
+    "id": "APPROVALS",
+    "name": "승인 센터",
+    "happy_path": "위험 작업·변경 해시·승인",
+    "failure_policy": "수정된 작업 재승인"
+  },
+  {
+    "id": "REPORTS",
+    "name": "보고서",
+    "happy_path": "근거·진행·완료/차단 사유",
+    "failure_policy": "증거 링크 검증"
+  },
+  {
+    "id": "ADMIN",
+    "name": "운영 설정",
+    "happy_path": "AI 차단·키 회전·리소스 예산",
+    "failure_policy": "OWNER ONLY"
+  },
+  {
+    "id": "AUDIT",
+    "name": "감사 로그",
+    "happy_path": "누가 무엇을 했는지",
+    "failure_policy": "비밀/PII 마스킹"
+  },
+  {
+    "id": "BACKUP",
+    "name": "백업·복구",
+    "happy_path": "체크섬·복원 시험·삭제",
+    "failure_policy": "영향 확인·승인"
+  },
+  {
+    "id": "CONNECTIONS",
+    "name": "AI 연결 검사",
+    "happy_path": "서비스별 인증·capability evidence",
+    "failure_policy": "자체신고 vs verified 분리"
+  },
+  {
+    "id": "ALERTS",
+    "name": "실시간 알림",
+    "happy_path": "문제·승인·예산·접속 장애",
+    "failure_policy": "실제 감지 이벤트"
+  },
+  {
+    "id": "REL_GATE",
+    "name": "최종 출시 게이트",
+    "happy_path": "Q001~Q041 PASS/FAIL/BLOCKED",
+    "failure_policy": "모든 AI 연결까지 필수"
+  }
+]

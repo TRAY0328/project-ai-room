@@ -1,0 +1,402 @@
+[
+  {
+    "id": "M-01",
+    "key": "messages_total",
+    "formula": "COUNT(message.id WHERE not tombstoned)",
+    "scope": "room/day",
+    "label": "메시지 수",
+    "evidence": "D1 message IDs"
+  },
+  {
+    "id": "M-02",
+    "key": "messages_per_minute",
+    "formula": "count(created_at in 60s)",
+    "scope": "room",
+    "label": "메시지 처리량",
+    "evidence": "관측 구간 표시"
+  },
+  {
+    "id": "M-03",
+    "key": "active_agents",
+    "formula": "COUNT(distinct agent where verified available)",
+    "scope": "global",
+    "label": "실제 이용 가능 AI",
+    "evidence": "자체신고 제외"
+  },
+  {
+    "id": "M-04",
+    "key": "online_sessions",
+    "formula": "COUNT(authenticated WS connections)",
+    "scope": "global",
+    "label": "접속 세션",
+    "evidence": "AI 추론 중과 다름"
+  },
+  {
+    "id": "M-05",
+    "key": "message_delivery_latency_ms",
+    "formula": "p95(ack-received)",
+    "scope": "agent",
+    "label": "AI 전달 지연",
+    "evidence": "ACK 증거 있을 때"
+  },
+  {
+    "id": "M-06",
+    "key": "message_send_failures",
+    "formula": "COUNT failed deliver",
+    "scope": "room/day",
+    "label": "전송 오류",
+    "evidence": "재시도 결과 구분"
+  },
+  {
+    "id": "M-07",
+    "key": "message_duplicate_prevented",
+    "formula": "count idempotency conflict",
+    "scope": "global/day",
+    "label": "중복 차단",
+    "evidence": "이벤트 ID 추적"
+  },
+  {
+    "id": "M-08",
+    "key": "room_unread_count",
+    "formula": "seq-after-last-read",
+    "scope": "room/actor",
+    "label": "읽지 않음",
+    "evidence": "마지막 기준 시점"
+  },
+  {
+    "id": "M-09",
+    "key": "room_active_count",
+    "formula": "COUNT rooms with activity",
+    "scope": "global/day",
+    "label": "활성 채팅방",
+    "evidence": "기간 정의"
+  },
+  {
+    "id": "M-10",
+    "key": "reactions_total",
+    "formula": "COUNT active reactions",
+    "scope": "room",
+    "label": "반응 총수",
+    "evidence": "unique actor enforced"
+  },
+  {
+    "id": "M-11",
+    "key": "tasks_total",
+    "formula": "COUNT tasks",
+    "scope": "project",
+    "label": "전체 작업",
+    "evidence": "삭제 제외"
+  },
+  {
+    "id": "M-12",
+    "key": "tasks_verified_done",
+    "formula": "COUNT DONE with evidence",
+    "scope": "project",
+    "label": "실검증 완료",
+    "evidence": "메시지 주장 제외"
+  },
+  {
+    "id": "M-13",
+    "key": "tasks_blocked",
+    "formula": "COUNT status BLOCKED",
+    "scope": "project",
+    "label": "차단 작업",
+    "evidence": "사유별 분류"
+  },
+  {
+    "id": "M-14",
+    "key": "tasks_in_progress",
+    "formula": "COUNT running/leased",
+    "scope": "project",
+    "label": "작업 중",
+    "evidence": "lease 유효 검사"
+  },
+  {
+    "id": "M-15",
+    "key": "task_cycle_hours",
+    "formula": "p50(done-created)",
+    "scope": "project",
+    "label": "작업 사이클",
+    "evidence": "완료된 작업만"
+  },
+  {
+    "id": "M-16",
+    "key": "task_retries",
+    "formula": "COUNT attempts >1",
+    "scope": "project",
+    "label": "재시도 수",
+    "evidence": "원인 포함"
+  },
+  {
+    "id": "M-17",
+    "key": "task_handoffs",
+    "formula": "COUNT handoff accepted",
+    "scope": "project",
+    "label": "작업 인계",
+    "evidence": "성공 인계만"
+  },
+  {
+    "id": "M-18",
+    "key": "task_dependency_wait",
+    "formula": "p95(wait_duration)",
+    "scope": "project",
+    "label": "의존 대기",
+    "evidence": "타임스탬프 근거"
+  },
+  {
+    "id": "M-19",
+    "key": "task_lease_expirations",
+    "formula": "COUNT expired leases",
+    "scope": "project",
+    "label": "lease 만료",
+    "evidence": "중복 실행 검사"
+  },
+  {
+    "id": "M-20",
+    "key": "ai_autonomy_accepted",
+    "formula": "COUNT verified autonomous actions",
+    "scope": "global",
+    "label": "자율 작업 수",
+    "evidence": "AI 실동작 증거"
+  },
+  {
+    "id": "M-21",
+    "key": "provider_verified_count",
+    "formula": "COUNT required provider verified",
+    "scope": "global",
+    "label": "검증된 필수 AI",
+    "evidence": "Q039 분모 포함"
+  },
+  {
+    "id": "M-22",
+    "key": "provider_required_count",
+    "formula": "COUNT required_agents",
+    "scope": "global",
+    "label": "필수 AI 수",
+    "evidence": "required_agents.json"
+  },
+  {
+    "id": "M-23",
+    "key": "provider_connect_failures",
+    "formula": "COUNT connect failures",
+    "scope": "provider",
+    "label": "연결 실패",
+    "evidence": "실사/검증 오류"
+  },
+  {
+    "id": "M-24",
+    "key": "provider_auth_expiries",
+    "formula": "COUNT auth expired",
+    "scope": "provider",
+    "label": "인증 만료",
+    "evidence": "token 상태"
+  },
+  {
+    "id": "M-25",
+    "key": "provider_rate_limits",
+    "formula": "COUNT rate limit events",
+    "scope": "provider",
+    "label": "AI 제한 발생",
+    "evidence": "HTTP/이벤트 근거"
+  },
+  {
+    "id": "M-26",
+    "key": "provider_autonomous_responses",
+    "formula": "COUNT provider response evidences",
+    "scope": "provider",
+    "label": "실제 자율 응답",
+    "evidence": "가상 응답 제외"
+  },
+  {
+    "id": "M-27",
+    "key": "github_pr_open",
+    "formula": "COUNT open PR",
+    "scope": "project",
+    "label": "진행 PR",
+    "evidence": "GitHub source"
+  },
+  {
+    "id": "M-28",
+    "key": "github_pr_merged",
+    "formula": "COUNT merged PR",
+    "scope": "project",
+    "label": "병합 PR",
+    "evidence": "GitHub source"
+  },
+  {
+    "id": "M-29",
+    "key": "github_reviews_valid",
+    "formula": "COUNT reviews matching head SHA",
+    "scope": "project",
+    "label": "유효 리뷰",
+    "evidence": "SHA 변경시 무효"
+  },
+  {
+    "id": "M-30",
+    "key": "github_conflicts",
+    "formula": "COUNT Git merge conflicts",
+    "scope": "project",
+    "label": "병합 충돌",
+    "evidence": "원격 API 근거"
+  },
+  {
+    "id": "M-31",
+    "key": "ci_runs",
+    "formula": "COUNT Actions run IDs",
+    "scope": "project",
+    "label": "CI 실행",
+    "evidence": "GitHub 원본"
+  },
+  {
+    "id": "M-32",
+    "key": "ci_pass_rate",
+    "formula": "verified success / completed runs",
+    "scope": "project",
+    "label": "CI 성공률",
+    "evidence": "취소/미실행 별도"
+  },
+  {
+    "id": "M-33",
+    "key": "ci_queue_latency",
+    "formula": "p95(started-queued)",
+    "scope": "project",
+    "label": "CI 대기시간",
+    "evidence": "데이터 존재할 때"
+  },
+  {
+    "id": "M-34",
+    "key": "ci_duration",
+    "formula": "p95(ended-started)",
+    "scope": "project",
+    "label": "CI 실행시간",
+    "evidence": "실제 GitHub"
+  },
+  {
+    "id": "M-35",
+    "key": "ci_retry_ratio",
+    "formula": "retries / dispatches",
+    "scope": "project",
+    "label": "재실행률",
+    "evidence": "중복 구분"
+  },
+  {
+    "id": "M-36",
+    "key": "tests_passed",
+    "formula": "sum verified test cases",
+    "scope": "project",
+    "label": "통과 테스트",
+    "evidence": "parseable report"
+  },
+  {
+    "id": "M-37",
+    "key": "tests_failed",
+    "formula": "sum verified failed cases",
+    "scope": "project",
+    "label": "실패 테스트",
+    "evidence": "스크립트 미실행 제외"
+  },
+  {
+    "id": "M-38",
+    "key": "tests_skipped",
+    "formula": "sum skipped test cases",
+    "scope": "project",
+    "label": "생략 테스트",
+    "evidence": "필수 검사 누락 차단"
+  },
+  {
+    "id": "M-39",
+    "key": "coverage_pct",
+    "formula": "covered statements / measured statements",
+    "scope": "project",
+    "label": "테스트 커버리지",
+    "evidence": "측정 안되면 N/A"
+  },
+  {
+    "id": "M-40",
+    "key": "artifact_count",
+    "formula": "COUNT verified manifest entries",
+    "scope": "project",
+    "label": "검증 산출물",
+    "evidence": "SHA와 R2 존재 확인"
+  },
+  {
+    "id": "M-41",
+    "key": "artifact_bytes",
+    "formula": "SUM verified storage bytes",
+    "scope": "project",
+    "label": "저장 파일 용량",
+    "evidence": "중복 제거 정책 명시"
+  },
+  {
+    "id": "M-42",
+    "key": "storage_r2_bytes",
+    "formula": "observed R2 storage",
+    "scope": "global",
+    "label": "R2 사용량",
+    "evidence": "API 관측 시각"
+  },
+  {
+    "id": "M-43",
+    "key": "d1_reads",
+    "formula": "observed D1 rows read",
+    "scope": "global",
+    "label": "DB 읽기",
+    "evidence": "청구 반영 지연 명시"
+  },
+  {
+    "id": "M-44",
+    "key": "d1_writes",
+    "formula": "observed D1 rows written",
+    "scope": "global",
+    "label": "DB 쓰기",
+    "evidence": "청구 반영 지연 명시"
+  },
+  {
+    "id": "M-45",
+    "key": "websocket_connections",
+    "formula": "active WS count",
+    "scope": "global",
+    "label": "실시간 접속",
+    "evidence": "presence와 구분"
+  },
+  {
+    "id": "M-46",
+    "key": "search_latency_ms",
+    "formula": "p95 server search duration",
+    "scope": "global",
+    "label": "검색 응답",
+    "evidence": "서버 측 계측"
+  },
+  {
+    "id": "M-47",
+    "key": "security_denied_requests",
+    "formula": "COUNT access denied",
+    "scope": "global",
+    "label": "권한 거부",
+    "evidence": "익명화·스팸 구분"
+  },
+  {
+    "id": "M-48",
+    "key": "backup_integrity_pass",
+    "formula": "verified restores / scheduled restore tests",
+    "scope": "global",
+    "label": "복원 검증률",
+    "evidence": "백업 존재와 별개"
+  },
+  {
+    "id": "M-49",
+    "key": "pending_owner_approvals",
+    "formula": "COUNT pending valid approvals",
+    "scope": "global",
+    "label": "승인 대기",
+    "evidence": "revision 유효 확인"
+  },
+  {
+    "id": "M-50",
+    "key": "project_progress_pct",
+    "formula": "weighted verified completed criteria/total",
+    "scope": "project",
+    "label": "전체 진행률",
+    "evidence": "추정과 실측 구분"
+  }
+]

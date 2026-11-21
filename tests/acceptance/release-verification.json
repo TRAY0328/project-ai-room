@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "evaluated_at": "2026-11-21T05:05:49.449Z",
+  "evaluated_at": "2026-11-21T05:19:59.216Z",
   "release_status": "INCOMPLETE",
   "ledger": "docs/evidence/release-evidence.json",
   "qa_summary": {
@@ -16,7 +16,7 @@
       {
         "file": "tests/acceptance/identity_lifecycle.test.mjs",
         "exit_code": 0,
-        "duration_ms": 521,
+        "duration_ms": 474,
         "passed": 8,
         "failed": 0,
         "timed_out": false
@@ -24,7 +24,7 @@
       {
         "file": "tests/acceptance/openapi_spec.test.mjs",
         "exit_code": 0,
-        "duration_ms": 717,
+        "duration_ms": 713,
         "passed": 6,
         "failed": 0,
         "timed_out": false
@@ -32,7 +32,7 @@
       {
         "file": "tests/acceptance/policy_guards.test.mjs",
         "exit_code": 0,
-        "duration_ms": 525,
+        "duration_ms": 571,
         "passed": 11,
         "failed": 0,
         "timed_out": false
@@ -40,7 +40,7 @@
       {
         "file": "tests/acceptance/release_gates.test.mjs",
         "exit_code": 0,
-        "duration_ms": 142,
+        "duration_ms": 156,
         "passed": 2,
         "failed": 0,
         "timed_out": false
@@ -48,7 +48,7 @@
       {
         "file": "tests/chaos/failure_injection.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1231,
+        "duration_ms": 1264,
         "passed": 9,
         "failed": 0,
         "timed_out": false
@@ -56,7 +56,7 @@
       {
         "file": "tests/integration/api_admin.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1229,
+        "duration_ms": 1221,
         "passed": 8,
         "failed": 0,
         "timed_out": false
@@ -64,7 +64,7 @@
       {
         "file": "tests/integration/api_chat.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1322,
+        "duration_ms": 1483,
         "passed": 9,
         "failed": 0,
         "timed_out": false
@@ -72,7 +72,7 @@
       {
         "file": "tests/integration/api_code.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1261,
+        "duration_ms": 1413,
         "passed": 8,
         "failed": 0,
         "timed_out": false
@@ -80,7 +80,7 @@
       {
         "file": "tests/integration/api_coverage.test.mjs",
         "exit_code": 0,
-        "duration_ms": 705,
+        "duration_ms": 847,
         "passed": 2,
         "failed": 0,
         "timed_out": false
@@ -88,7 +88,7 @@
       {
         "file": "tests/integration/api_cross_cutting.test.mjs",
         "exit_code": 0,
-        "duration_ms": 826,
+        "duration_ms": 862,
         "passed": 4,
         "failed": 0,
         "timed_out": false
@@ -96,7 +96,7 @@
       {
         "file": "tests/integration/api_identity.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1600,
+        "duration_ms": 1887,
         "passed": 10,
         "failed": 0,
         "timed_out": false
@@ -104,7 +104,7 @@
       {
         "file": "tests/integration/api_projects.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1130,
+        "duration_ms": 1329,
         "passed": 6,
         "failed": 0,
         "timed_out": false
@@ -112,7 +112,7 @@
       {
         "file": "tests/integration/db_schema.test.mjs",
         "exit_code": 0,
-        "duration_ms": 310,
+        "duration_ms": 383,
         "passed": 16,
         "failed": 0,
         "timed_out": false
@@ -120,7 +120,7 @@
       {
         "file": "tests/security/security_cases.test.mjs",
         "exit_code": 0,
-        "duration_ms": 963,
+        "duration_ms": 1146,
         "passed": 1,
         "failed": 0,
         "timed_out": false
@@ -128,7 +128,7 @@
       {
         "file": "tests/unit/contracts.test.mjs",
         "exit_code": 0,
-        "duration_ms": 433,
+        "duration_ms": 503,
         "passed": 11,
         "failed": 0,
         "timed_out": false
@@ -136,7 +136,7 @@
       {
         "file": "tests/unit/platform_primitives.test.mjs",
         "exit_code": 0,
-        "duration_ms": 438,
+        "duration_ms": 426,
         "passed": 9,
         "failed": 0,
         "timed_out": false
@@ -169,7 +169,7 @@
         {
           "name": "required-roster",
           "status": "PASS",
-          "detail": "../work/ai_room_pack/PROJECT_AI_ROOM/required_agents.example.json: 필수 8종"
+          "detail": "spec/required_agents.example.json: 필수 8종"
         }
       ]
     },

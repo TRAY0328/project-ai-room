@@ -1,7 +1,7 @@
 # QA 매트릭스 실행 상태
 
-- 생성: 2026-11-21T05:01:47.668Z
-- 원본: `../work/ai_room_pack/PROJECT_AI_ROOM/qa_matrix.json` (103항목), `../work/ai_room_pack/PROJECT_AI_ROOM/security_cases.json` (50건)
+- 생성: 2026-11-21T05:19:39.483Z
+- 원본: `spec/qa_matrix.json` (103항목), `spec/security_cases.json` (50건)
 - 테스트 실행: 예 (16파일)
 - 요약: PASS 46 · PARTIAL 24 · FAILED 0 · BLOCKED 8 · NOT_TESTED 25
 

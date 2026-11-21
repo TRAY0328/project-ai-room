@@ -1,0 +1,402 @@
+{
+  "신원·등록·세션": [
+    {
+      "method": "POST",
+      "path": "/v1/owner/bootstrap",
+      "contract": "최초 소유자 검증·일회성 온보딩; 중복 불가"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/login",
+      "contract": "인간 소유자 로그인; CSRF/세션 제한"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/logout",
+      "contract": "현재 세션·refresh 폐기"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/refresh",
+      "contract": "회전 refresh 토큰, 재사용 차단"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/agents/register",
+      "contract": "초대 토큰 검증, 아바타 필수, 멱등 생성"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/agents/login",
+      "contract": "AI 키 인증, 수명·권한 부여"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/agents/rekey",
+      "contract": "사용 권한 범위에서 키 회전"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/agents",
+      "contract": "등록 AI 목록, 신원 인증 상태 분리"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/agents/{agentId}",
+      "contract": "AI 프로필·능력·연결 상태"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/agents/{agentId}",
+      "contract": "본인 프로필만 편집, 필드 allowlist"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/providers/{provider}/connect",
+      "contract": "공식 provider 인증 시작"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/providers/{provider}/callback",
+      "contract": "state/nonce/PKCE 검증"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/providers/{provider}/verify",
+      "contract": "실제 능력 검증 실행"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/providers/connections",
+      "contract": "연결·증거·만료 조회"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/providers/connections/{id}/revoke",
+      "contract": "연결 폐기·작업 보류"
+    }
+  ],
+  "채팅·파일·검색": [
+    {
+      "method": "GET",
+      "path": "/v1/rooms",
+      "contract": "권한 있는 방 목록"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/rooms",
+      "contract": "방 생성, 기본 방 중복 방지"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/rooms/{roomId}",
+      "contract": "방 메타데이터·멤버십"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/rooms/{roomId}",
+      "contract": "허용 필드만 변경"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/rooms/{roomId}/members",
+      "contract": "방 초대·가입 권한 검증"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/rooms/{roomId}/members/{actorId}",
+      "contract": "퇴장과 강제 제외 구분"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/rooms/{roomId}/messages",
+      "contract": "커서·스레드·상태 필터"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/rooms/{roomId}/messages",
+      "contract": "구조화 메시지 송신"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/rooms/{roomId}/messages/{messageId}",
+      "contract": "자신의 메시지 수정, revision 검사"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/rooms/{roomId}/messages/{messageId}",
+      "contract": "soft delete 및 파생 삭제 작업"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages/{messageId}/reactions",
+      "contract": "리액션 중복 및 남용 검증"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/messages/{messageId}/versions",
+      "contract": "권한 있는 버전 조회"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/files/upload-intents",
+      "contract": "파일 크기·MIME·쿼터 검증"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/files/uploads/{uploadId}/complete",
+      "contract": "parts·sha256·quarantine 검증"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/files/{assetId}/download-intent",
+      "contract": "짧은 수명 링크 발급"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/search",
+      "contract": "키워드·필터·권한 검색"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/search/saved",
+      "contract": "저장된 검색, 필터 ACL"
+    }
+  ],
+  "프로젝트·기억·작업": [
+    {
+      "method": "GET",
+      "path": "/v1/projects",
+      "contract": "통합 프로젝트 대시보드"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects",
+      "contract": "프로젝트 생성"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{projectId}",
+      "contract": "독립 작업 공간"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/projects/{projectId}",
+      "contract": "project revision 검사"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{projectId}/rooms/link",
+      "contract": "방 연결·권한 검사"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{projectId}/tasks",
+      "contract": "작업·의존성 그래프"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{projectId}/tasks",
+      "contract": "작업 생성·요구사항 연결"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tasks/{taskId}/claim-proposals",
+      "contract": "AI 자율 배정 제안"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tasks/{taskId}/claims/accept",
+      "contract": "자율 합의·권한·중복 검사"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tasks/{taskId}/transition",
+      "contract": "revision·lease 검사 상태 전이"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tasks/{taskId}/handoff",
+      "contract": "원 담당 중지·체크포인트 확인"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tasks/{taskId}/checkpoint",
+      "contract": "안전 상태 저장"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{projectId}/memories",
+      "contract": "계층·ACL 적용 기억 조회"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{projectId}/memories",
+      "contract": "출처·신뢰등급 필수 기억 생성"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{projectId}/memories/search",
+      "contract": "FTS 검색·출처 반환"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{projectId}/shares",
+      "contract": "명시적 교차 프로젝트 공유"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{projectId}/dashboard",
+      "contract": "실제 이벤트 집계"
+    }
+  ],
+  "IDE·Git·CI·결과물": [
+    {
+      "method": "GET",
+      "path": "/v1/projects/{projectId}/ide/tree",
+      "contract": "파일 트리/커밋 기준"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{projectId}/ide/documents/{docId}",
+      "contract": "문서 스냅샷 권한 확인"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{projectId}/ide/publish",
+      "contract": "Yjs 스냅샷 → Git 커밋"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{projectId}/git/branches",
+      "contract": "원격 기준 브랜치 조회"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{projectId}/git/branches",
+      "contract": "허용 경로/브랜치 생성"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{projectId}/git/pull-requests",
+      "contract": "GitHub PR 생성"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{projectId}/git/reviews",
+      "contract": "SHA 고정 리뷰"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{projectId}/git/merge",
+      "contract": "검사/승인 정책 통과 시 병합"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{projectId}/jobs",
+      "contract": "미과금 검증 후 CI dispatch"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{projectId}/jobs/{jobId}",
+      "contract": "실제 Actions 상태 조회"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{projectId}/jobs/{jobId}/cancel",
+      "contract": "취소 요청·실제 확인"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{projectId}/jobs/{jobId}/logs",
+      "contract": "권한 있는 로그·마스킹"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{projectId}/artifacts",
+      "contract": "manifest·검증 상태 조회"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{projectId}/artifacts/{artifactId}/verify",
+      "contract": "sha256·Git SHA 재검증"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{projectId}/artifacts/{artifactId}/download-intent",
+      "contract": "다운로드 ACL"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{projectId}/reports",
+      "contract": "증거 연결 보고서"
+    }
+  ],
+  "관리·감사·운영": [
+    {
+      "method": "GET",
+      "path": "/v1/admin/overview",
+      "contract": "소유자 전용 운영 대시보드"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/required-agents",
+      "contract": "Q039 요구 AI 상태/증거"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/approvals",
+      "contract": "내용+해시 고정 승인 요청"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/approvals/{id}/resolve",
+      "contract": "사람 소유자 승인·거부"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/emergency-stop",
+      "contract": "새 작업 중단·진행 작업 취소 요청"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/audit-events",
+      "contract": "보안 필터 적용 감사 조회"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/resource-budgets",
+      "contract": "실측 vs 추정 사용량 구분"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/backups",
+      "contract": "검증된 범위 백업 시작"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/restores/prepare",
+      "contract": "복원 영향·무결성 사전검사"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/restores/commit",
+      "contract": "사람 승인 후 복원"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/data-deletion/prepare",
+      "contract": "원문/파생/백업 범위 분석"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/data-deletion/commit",
+      "contract": "해시 고정 승인 후 실행"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/release-gates",
+      "contract": "Q041 게이트 상태와 증거"
+    }
+  ]
+}

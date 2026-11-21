@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-21T05:01:47.668Z",
+  "generated_at": "2026-11-21T05:19:39.483Z",
   "sources": {
-    "qa_matrix": "/workspace/work/ai_room_pack/PROJECT_AI_ROOM/qa_matrix.json",
-    "security_cases": "/workspace/work/ai_room_pack/PROJECT_AI_ROOM/security_cases.json",
+    "qa_matrix": "/workspace/project-ai-room/spec/qa_matrix.json",
+    "security_cases": "/workspace/project-ai-room/spec/security_cases.json",
     "evidence_map": "/workspace/project-ai-room/tests/acceptance/qa_evidence_map.json"
   },
   "checks": {
@@ -34,7 +34,7 @@
       {
         "file": "tests/acceptance/identity_lifecycle.test.mjs",
         "exit_code": 0,
-        "duration_ms": 499,
+        "duration_ms": 505,
         "passed": 8,
         "failed": 0,
         "timed_out": false
@@ -42,7 +42,7 @@
       {
         "file": "tests/acceptance/openapi_spec.test.mjs",
         "exit_code": 0,
-        "duration_ms": 634,
+        "duration_ms": 678,
         "passed": 6,
         "failed": 0,
         "timed_out": false
@@ -50,7 +50,7 @@
       {
         "file": "tests/acceptance/policy_guards.test.mjs",
         "exit_code": 0,
-        "duration_ms": 536,
+        "duration_ms": 530,
         "passed": 11,
         "failed": 0,
         "timed_out": false
@@ -58,7 +58,7 @@
       {
         "file": "tests/acceptance/release_gates.test.mjs",
         "exit_code": 0,
-        "duration_ms": 154,
+        "duration_ms": 151,
         "passed": 2,
         "failed": 0,
         "timed_out": false
@@ -66,7 +66,7 @@
       {
         "file": "tests/chaos/failure_injection.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1253,
+        "duration_ms": 1245,
         "passed": 9,
         "failed": 0,
         "timed_out": false
@@ -74,7 +74,7 @@
       {
         "file": "tests/integration/api_admin.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1205,
+        "duration_ms": 1340,
         "passed": 8,
         "failed": 0,
         "timed_out": false
@@ -82,7 +82,7 @@
       {
         "file": "tests/integration/api_chat.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1331,
+        "duration_ms": 1459,
         "passed": 9,
         "failed": 0,
         "timed_out": false
@@ -90,7 +90,7 @@
       {
         "file": "tests/integration/api_code.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1216,
+        "duration_ms": 1414,
         "passed": 8,
         "failed": 0,
         "timed_out": false
@@ -98,7 +98,7 @@
       {
         "file": "tests/integration/api_coverage.test.mjs",
         "exit_code": 0,
-        "duration_ms": 813,
+        "duration_ms": 800,
         "passed": 2,
         "failed": 0,
         "timed_out": false
@@ -106,7 +106,7 @@
       {
         "file": "tests/integration/api_cross_cutting.test.mjs",
         "exit_code": 0,
-        "duration_ms": 797,
+        "duration_ms": 842,
         "passed": 4,
         "failed": 0,
         "timed_out": false
@@ -114,7 +114,7 @@
       {
         "file": "tests/integration/api_identity.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1575,
+        "duration_ms": 1835,
         "passed": 10,
         "failed": 0,
         "timed_out": false
@@ -122,7 +122,7 @@
       {
         "file": "tests/integration/api_projects.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1179,
+        "duration_ms": 1186,
         "passed": 6,
         "failed": 0,
         "timed_out": false
@@ -130,7 +130,7 @@
       {
         "file": "tests/integration/db_schema.test.mjs",
         "exit_code": 0,
-        "duration_ms": 335,
+        "duration_ms": 303,
         "passed": 16,
         "failed": 0,
         "timed_out": false
@@ -138,7 +138,7 @@
       {
         "file": "tests/security/security_cases.test.mjs",
         "exit_code": 0,
-        "duration_ms": 1019,
+        "duration_ms": 1036,
         "passed": 1,
         "failed": 0,
         "timed_out": false
@@ -146,7 +146,7 @@
       {
         "file": "tests/unit/contracts.test.mjs",
         "exit_code": 0,
-        "duration_ms": 446,
+        "duration_ms": 485,
         "passed": 11,
         "failed": 0,
         "timed_out": false
@@ -154,7 +154,7 @@
       {
         "file": "tests/unit/platform_primitives.test.mjs",
         "exit_code": 0,
-        "duration_ms": 416,
+        "duration_ms": 445,
         "passed": 9,
         "failed": 0,
         "timed_out": false

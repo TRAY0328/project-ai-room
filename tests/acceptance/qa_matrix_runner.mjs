@@ -36,7 +36,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "../..");
-const SPEC_DIR = resolve(REPO_ROOT, "../work/ai_room_pack/PROJECT_AI_ROOM");
+const SPEC_DIR = process.env.AI_ROOM_PACK
+  ?? (existsSync(resolve(REPO_ROOT, "spec/api_catalog.json")) ? resolve(REPO_ROOT, "spec") : resolve(REPO_ROOT, "../work/ai_room_pack/PROJECT_AI_ROOM"));
 const QA_FILE = process.env.AI_ROOM_QA_MATRIX ?? join(SPEC_DIR, "qa_matrix.json");
 const SECURITY_FILE = process.env.AI_ROOM_SECURITY_CASES ?? join(SPEC_DIR, "security_cases.json");
 const EVIDENCE_FILE = process.env.AI_ROOM_EVIDENCE_MAP ?? join(HERE, "qa_evidence_map.json");
