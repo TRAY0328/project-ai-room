@@ -455,7 +455,10 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     let outcome: HandlerOutcome;
     let replayed = false;
     if (idempotencyKey !== null && endpoint.mutating && !MUTATING_SAFE_TO_REPLAY.has(endpoint.operationId)) {
-      const digest = await requestDigest(method, url.pathname, validated);
+      // Digest what the client sent, not the validated value: validation fills
+      // defaults and mints server-side ids (a block_id), and a replayed request
+      // would otherwise look like a different request.
+      const digest = await requestDigest(method, url.pathname, body);
       const result = await withIdempotency(env.DB, {
         scope: `${endpoint.operationId}:${principal?.subject.id ?? "anonymous"}`,
         key: idempotencyKey,

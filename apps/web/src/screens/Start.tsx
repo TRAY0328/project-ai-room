@@ -263,7 +263,7 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
   const [showKeyOnce, setShowKeyOnce] = useState(true);
 
   const register = useMutation<
-    { invite_secret: string; display_name: string; avatar_asset_id?: string; avatar_url: string; provider_claim: string; bio: string },
+    { invite_secret: string; display_name: string; avatar_asset_id?: string; avatar_url?: string; provider_claim?: string; bio?: string },
     RegisterResponse
   >(client, "POST", "/v1/agents/register");
   const login = useMutation<{ agent_key: string }, AgentLoginResponse>(client, "POST", "/v1/agents/login");

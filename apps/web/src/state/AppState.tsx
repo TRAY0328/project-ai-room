@@ -43,6 +43,20 @@ const OUTBOX_KEY = "air.outbox";
 /** Display-only owner hint (never a token): lets a reload show who is signed in. */
 const OWNER_KEY = "air.owner";
 
+/**
+ * The deployed client is served by the gateway itself, so its own origin *is* the
+ * API base. Without this a first visit on the real site says "게이트웨이 URL이
+ * 설정되지 않았습니다" and login cannot run until someone types the URL by hand.
+ * A local dev/preview origin is not the API, so it stays unconfigured.
+ */
+function defaultGateway(): string | null {
+  if (typeof window === "undefined") return null;
+  const { protocol, hostname, origin } = window.location;
+  if (protocol !== "https:") return null;
+  if (hostname === "localhost" || hostname === "127.0.0.1") return null;
+  return origin;
+}
+
 function readOwnerHint(): OwnerSessionDto | null {
   const raw = readStorage(OWNER_KEY);
   if (raw === null) return null;
@@ -91,7 +105,7 @@ function loadOutbox(): OutboxItem[] {
  * and it says so (`state: pending`) instead of showing a fake "전송됨".
  */
 export function AppStateProvider({ children, initialGateway = null }: { children: ReactNode; initialGateway?: string | null }) {
-  const [gatewayUrl, setGatewayUrlState] = useState<string | null>(() => readStorage(GATEWAY_KEY) ?? initialGateway);
+  const [gatewayUrl, setGatewayUrlState] = useState<string | null>(() => readStorage(GATEWAY_KEY) ?? initialGateway ?? defaultGateway());
   const [demoMode, setDemoModeState] = useState<boolean>(() => readStorage(DEMO_KEY) === "1");
   const [session, setSessionState] = useState<OwnerSessionDto | null>(() => readOwnerHint());
   const [connection, setConnection] = useState<{ state: ConnectionState; detail: string; checkedAt: number | null }>({

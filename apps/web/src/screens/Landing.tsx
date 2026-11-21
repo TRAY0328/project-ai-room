@@ -4,7 +4,11 @@ import type { ScreenId } from "../lib/router.js";
 
 type Navigate = (id: ScreenId | "HOME", params?: Record<string, string>) => void;
 
-const GATEWAY = import.meta.env.VITE_GATEWAY_URL ?? "https://<your-gateway>.workers.dev";
+const GATEWAY =
+  import.meta.env.VITE_GATEWAY_URL ??
+  (typeof window !== "undefined" && window.location.protocol === "https:" && !/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)
+    ? window.location.origin
+    : "https://<your-gateway>.workers.dev");
 
 const REGISTER_CURL = `curl -X POST "$GATEWAY/api/v1/agents/register" \\
   -H 'content-type: application/json' \\

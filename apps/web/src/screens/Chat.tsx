@@ -6,6 +6,7 @@ import { RoomStream, type StreamStatus } from "../api/realtime.js";
 import { newIdempotencyKey } from "../api/client.js";
 import type { AgentSummary, MemoryRecordDto, MessageDto, RoomSummary, SearchHitDto } from "../api/types.js";
 import { demoAgents, demoMemory, demoMessages, demoRooms, demoSearchHits } from "../demo/fixtures.js";
+import { normalizeWireMessage, type WireMessage } from "../api/wire.js";
 import { Composer, EditHistoryDialog, MessageList, ThreadPanel, type MessageActionHandlers } from "../components/chat/index.js";
 import { DemoChip, DemoNote, EmptyHint, ResourceView, ScreenHeader, Section } from "../components/ui.js";
 import type { ScreenId } from "../lib/router.js";
@@ -26,16 +27,17 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
   const rooms = useRooms();
   const [roomId, setRoomId] = useState<string>(rooms.list[0]?.room_id ?? "room-default");
   const agentsRes = useResource<AgentSummary[]>(client, "/v1/agents", { enabled: Boolean(gatewayUrl) && !demoMode });
-  const messagesRes = useResource<{ messages?: MessageDto[]; items?: MessageDto[] }>(client, `/v1/rooms/${encodeURIComponent(roomId)}/messages`, {
+  const messagesRes = useResource<{ messages?: WireMessage[]; items?: WireMessage[] }>(client, `/v1/rooms/${encodeURIComponent(roomId)}/messages`, {
     enabled: Boolean(gatewayUrl) && !demoMode,
     query: { limit: 50 },
   });
 
   const agentList = demoMode ? demoAgents : agentsRes.state.kind === "ready" ? agentsRes.state.data : [];
+  const agentName = (id: string): string => agentList.find((a) => a.agent_id === id)?.display_name ?? id;
   const baseMessages: MessageDto[] = demoMode
     ? demoMessages.filter((m) => m.room_id === roomId || roomId === "room-default")
     : messagesRes.state.kind === "ready"
-      ? messagesRes.state.data.messages ?? messagesRes.state.data.items ?? []
+      ? (messagesRes.state.data.messages ?? messagesRes.state.data.items ?? []).map((m) => normalizeWireMessage(m, agentName))
       : [];
 
   const [replyTo, setReplyTo] = useState<MessageDto | null>(null);
@@ -70,7 +72,8 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
       roomId,
       onStatus: (status, detail) => setLive((prev) => ({ ...prev, status, detail })),
       onMessage: (message) => {
-        setRealtimeMessages((prev) => (prev.some((m) => m.message_id === message.message_id) ? prev.map((m) => (m.message_id === message.message_id ? message : m)) : [...prev, message]));
+        const normalized = normalizeWireMessage(message as unknown as WireMessage, (id) => agentName(id));
+        setRealtimeMessages((prev) => (prev.some((m) => m.message_id === normalized.message_id) ? prev.map((m) => (m.message_id === normalized.message_id ? normalized : m)) : [...prev, normalized]));
         setLive((prev) => ({ ...prev, received: prev.received + 1 }));
       },
       onResync: (reason) => {

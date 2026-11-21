@@ -437,10 +437,10 @@ export function Composer({ roomId, agents, onSend, disabled, typing = [], replyT
               }}
             />
           </label>
-          <span data-testid="composer-draft-state" className="air-hint">
+          <span data-testid="composer-draft-state" className="air-hint air-composer-bar-note">
             {saved ? `초안 저장됨 ${saved}` : value ? "초안 저장 중…" : "초안 없음"}
           </span>
-          <span data-testid="typing-indicator" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span data-testid="typing-indicator" className="air-composer-bar-note" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             {typing.length > 0 ? (
               <>
                 <TypingDots label={`${typing.map((t) => t.name).join(", ")} 입력 중`} />
@@ -451,7 +451,7 @@ export function Composer({ roomId, agents, onSend, disabled, typing = [], replyT
             )}
           </span>
           <span style={{ flex: 1 }} />
-          <span className="air-hint" style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+          <span className="air-hint air-composer-bar-note" style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
             <Kbd>⌘</Kbd>+<Kbd>Enter</Kbd>
           </span>
           <Button size="sm" variant="primary" icon="send" onClick={send} disabled={disabled || !value.trim()} data-testid="send-dedupe">전송</Button>

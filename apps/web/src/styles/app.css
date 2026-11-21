@@ -673,7 +673,15 @@
   .air-chat-rooms { display: none; }
   .mb-beforeafter { grid-template-columns: 1fr; }
   .air-ide-layout { grid-template-columns: minmax(0, 1fr); }
-  .air-kanban { grid-auto-columns: minmax(78%, 1fr); }
+  .air-kanban { grid-auto-columns: minmax(78%, 1fr); scroll-snap-type: x proximity; }
+  .air-kanban-col { scroll-snap-align: start; }
+
+  /* A chat owns the screen and scrolls only its message list, so the composer
+     stays at the bottom edge instead of after the whole history. */
+  .air-main-scroll:has(> .air-route-fade > .air-chat-screen) { overflow: hidden; }
+  .air-main-scroll:has(> .air-route-fade > .air-chat-screen) > .air-route-fade,
+  .air-main-scroll:has(> .air-route-fade > .air-chat-screen) > .air-route-fade > * { height: 100%; min-height: 0; }
+  .air-chat-screen { height: 100%; }
 }
 
 @media (max-width: 768px) {
@@ -695,15 +703,6 @@
   .air-scrim { padding: 10px; }
 
   .air-composer { padding: 8px 10px calc(10px + env(safe-area-inset-bottom)); }
-  /* The phone chat scrolls with the page, so the composer rides the bottom edge
-     instead of sitting below the whole message history. */
-  .air-chat-screen { height: auto !important; }
-  .air-composer {
-    position: sticky;
-    bottom: 0;
-    z-index: 6;
-    box-shadow: 0 -10px 20px -18px var(--air-shadow);
-  }
   .air-chat-scroll { padding: 10px; }
   .air-msg { padding: 8px 4px 8px 0; }
 
@@ -719,13 +718,17 @@
   .air-topbar { padding: 8px 10px; gap: 6px; }
   .air-topbar-sub { display: none; }
   .air-topbar-title { font-size: 14px; }
+  .air-banner { font-size: 12px; padding: 8px 10px; gap: 8px; }
   /* Search keeps its icon only; the label and ⌘K hint are desktop furniture. */
   .air-searchbox { min-width: 0; flex: 0 0 auto; width: 34px; padding: 6px; justify-content: center; }
   .air-searchbox > span, .air-searchbox .air-kbd { display: none; }
   /* Demo switch and gateway live in the drawer on a phone. */
-  .air-topbar-extra { display: none; }
+  .air-topbar-extra { display: none !important; }
   .air-screen-title { font-size: 16px; }
   .air-main-scroll { padding: 10px; }
+  /* Draft state, typing note and the ⌘K hint are desktop affordances. */
+  .air-composer-bar-note { display: none !important; }
+  .air-composer-bar { justify-content: flex-start; }
   .air-chat-scroll { padding: 10px 10px 0; }
   .air-toasts { left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); max-width: none; }
 }
@@ -1165,6 +1168,12 @@
   .lp-step { grid-template-columns: 28px minmax(0, 1fr); padding: 14px 12px; }
   .lp-footer { padding: 16px 14px 22px; }
   .lp-final { padding: 32px 16px; }
+}
+
+@media (max-width: 420px) {
+  /* Room for the product name: the hero carries the same "둘러보기" action. */
+  .lp-nav-cta .air-btn[data-variant="ghost"] { display: none; }
+  .lp-title { font-size: 25px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
