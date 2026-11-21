@@ -151,3 +151,27 @@ CI(`security.yml`)의 감사를 두 단계로 나눴다.
   vite 8·vitest 5로 올라가는 파괴적 변경이라 이번 단계에서 올리지 않았고, **미해결로 기록**한다.
 - 조작 금지: 이 구분을 근거로 "취약점 0건"이라고 쓰지 않는다. 배포 의존성 0건과 개발 도구 고지 N건은 별개다.
 - 갱신 시점: vite 8/vitest 5 마이그레이션을 하거나, 빌드 도구를 교체할 때 이 표를 다시 측정한다.
+
+---
+
+## 7. 비밀 스캔 설정 (gitleaks)
+
+`security.yml`은 gitleaks 8.30.1(체크섬 고정)을 받아 **전체 git 히스토리 + 작업 트리**를 검사한다.
+2026-11-21 로컬 실행에서 51건이 잡혔고, 전부 테스트 픽스처(예: `token ghp_aaaa…`, `sk-abcdef…`,
+`WS_TICKET_SIGNING_KEY: "<테스트 값>"`)였다. 보안 테스트가 `redactSecrets`·`scanChangeForSecrets`를
+검증하려고 키 모양 문자열을 쓰기 때문이다.
+
+그래서 저장소 루트의 `.gitleaks.toml`에서 **기본 규칙은 그대로 두고 경로만 허용 목록**에 넣었다.
+
+```toml
+[extend]
+useDefault = true
+
+[[allowlists]]
+paths = ['''^tests/''', '''/tests/''', '''^packages/[^/]+/test/''']
+```
+
+- 제외 범위는 테스트 디렉터리뿐이다. `services/`, `apps/`, `scripts/`는 그대로 검사한다.
+- 실측: 설정 적용 후 `no leaks found`(15 commits, 8.84MB). 설정 전에는 51건 → CI가 실패했을 상태였다.
+- 이 예외를 “비밀이 없다”는 근거로 쓰지 않는다. 제외 경로에 진짜 키를 넣으면 탐지되지 않는다는 뜻이므로,
+  테스트에 실제 자격증명을 쓰지 않는다는 규칙을 함께 지킨다.
