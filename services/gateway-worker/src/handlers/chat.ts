@@ -12,13 +12,14 @@
  *    the trigger, fails pending receipts and expires download links.
  */
 import { ApiError, mintId, toUtcIso } from "@ai-room/contracts";
-import { allRows, count, firstRow, scalar, sha256Hex, nowIso } from "@ai-room/auth";
+import { allRows, count, firstRow, scalar, sha256Hex, nowIso, batchRows, placeholders } from "@ai-room/auth";
 import { SearchService } from "@ai-room/search";
 import { recordProjectMetric } from "@ai-room/telemetry";
 import { signDownloadGrant } from "@ai-room/auth";
 import type { Handler } from "../domain.js";
 import {
   aclRevision,
+  assertRoomVisible,
   blocked,
   getMessageForPrincipal,
   getRoom,
@@ -28,6 +29,9 @@ import {
   recordProjectEvent,
   roomMemberCount,
   serializeMessage,
+  serializeMessages,
+  type MessageRow,
+  type RoomRow,
 } from "../domain.js";
 import { pageFromUrl } from "../http.js";
 import { publishPersistedMessage } from "../realtime.js";
@@ -88,14 +92,35 @@ export const chatHandlers: Record<string, Handler> = {
             ctx.principal.subject.id,
           );
     const items = [];
+    // Two grouped reads for the whole list instead of two per room. With one room
+    // that is a small win; with thirty it is the difference between a list and a
+    // spinner.
+    const roomIds = rows.map((row) => row.room_id);
+    const inList = placeholders(roomIds.length);
+    const [memberRows, seqRows] = roomIds.length === 0
+      ? [[], []]
+      : await batchRows(ctx.db, [
+          {
+            sql: `SELECT room_id, COUNT(*) AS n FROM room_members WHERE left_at IS NULL AND room_id IN (${inList}) GROUP BY room_id`,
+            params: roomIds,
+          },
+          {
+            sql: `SELECT room_id, COALESCE(MAX(room_seq),0) AS n FROM messages WHERE room_id IN (${inList}) GROUP BY room_id`,
+            params: roomIds,
+          },
+        ]);
+    const memberCounts = new Map<string, number>();
+    for (const row of memberRows as Array<{ room_id: string; n: number }>) memberCounts.set(row.room_id, row.n);
+    const latestSeqs = new Map<string, number>();
+    for (const row of seqRows as Array<{ room_id: string; n: number }>) latestSeqs.set(row.room_id, row.n);
     for (const row of rows) {
       items.push({
         room_id: row.room_id,
         room_type: row.room_type,
         name: row.name,
         revision: row.revision,
-        member_count: await roomMemberCount(ctx.db, row.room_id),
-        latest_seq: await latestSeq(ctx.db, row.room_id),
+        member_count: memberCounts.get(row.room_id) ?? 0,
+        latest_seq: latestSeqs.get(row.room_id) ?? 0,
         created_at: row.created_at,
         updated_at: row.updated_at,
       });
@@ -244,53 +269,61 @@ export const chatHandlers: Record<string, Handler> = {
   },
 
   "get-rooms-by-roomId-messages": async (ctx) => {
-    const room = await getRoom(ctx.db, ctx.params["roomId"] ?? "", ctx.principal, ctx.requestId);
+    const requestedRoomId = ctx.params["roomId"] ?? "";
     const page = pageFromUrl(ctx.url, ctx.requestId);
     const includeDeleted = ctx.url.searchParams.get("include_deleted") === "true" && ctx.principal.subject.kind === "owner";
     const thread = ctx.url.searchParams.get("thread_id");
+    const afterSeqRaw = ctx.url.searchParams.get("after_seq");
+    let afterSeq: number | null = null;
+    if (afterSeqRaw !== null && afterSeqRaw.length > 0) {
+      const parsed = Number.parseInt(afterSeqRaw, 10);
+      if (!Number.isInteger(parsed) || parsed < 0) throw new ApiError({ code: "VALIDATION_FAILED", requestId: ctx.requestId, details: { field: "after_seq", note: "0 이상의 정수여야 합니다." } });
+      if (page.cursor !== null) throw new ApiError({ code: "VALIDATION_FAILED", requestId: ctx.requestId, details: { field: "after_seq", note: "cursor와 함께 쓸 수 없습니다." } });
+      afterSeq = parsed;
+    }
     const clauses = ["room_id = ?"];
-    const params: unknown[] = [room.room_id];
+    const params: unknown[] = [requestedRoomId];
     if (!includeDeleted) clauses.push("deleted_at IS NULL");
     if (thread !== null && thread.length > 0) {
       clauses.push("(reply_to_id = ? OR message_id = ?)");
       params.push(thread, thread);
     }
-    if (page.cursor !== null) {
+    // `after_seq` is the tail sync a client uses after a live stream: only what it
+    // has not seen, oldest first. A plain page (no after_seq) keeps the documented
+    // newest-first cursor paging.
+    const order: "asc" | "desc" = afterSeq !== null ? "asc" : page.order;
+    if (afterSeq !== null) {
+      clauses.push("room_seq > ?");
+      params.push(afterSeq);
+    } else if (page.cursor !== null) {
       const cursorSeq = Number.parseInt(page.cursor, 10);
       if (!Number.isFinite(cursorSeq)) throw new ApiError({ code: "VALIDATION_FAILED", requestId: ctx.requestId, details: { field: "cursor", note: "room_seq 숫자여야 합니다." } });
-      clauses.push(page.order === "desc" ? "room_seq < ?" : "room_seq > ?");
+      clauses.push(order === "desc" ? "room_seq < ?" : "room_seq > ?");
       params.push(cursorSeq);
     }
-    const rows = await allRows<{
-      message_id: string;
-      room_id: string;
-      author_kind: "owner" | "agent" | "system";
-      author_id: string;
-      reply_to_id: string | null;
-      room_seq: number;
-      current_revision: number;
-      status: string;
-      created_at: string;
-      updated_at: string | null;
-      deleted_at: string | null;
-    }>(
-      ctx.db,
-      `SELECT * FROM messages WHERE ${clauses.join(" AND ")} ORDER BY room_seq ${page.order === "desc" ? "DESC" : "ASC"} LIMIT ?`,
-      ...params,
-      page.limit + 1,
-    );
+    const columns =
+      "message_id, room_id, author_kind, author_id, reply_to_id, room_seq, current_revision, status, created_at, updated_at, deleted_at";
+    // One round trip for the room guard, the page and the head sequence; one more
+    // for the page's relations (see serializeMessages). Previously this endpoint
+    // paid 3 + 4×limit sequential round trips.
+    const [roomRows = [], pageRowResults = [], seqRows = []] = await batchRows(ctx.db, [
+      { sql: "SELECT * FROM rooms WHERE room_id = ? AND deleted_at IS NULL", params: [requestedRoomId] },
+      { sql: `SELECT ${columns} FROM messages WHERE ${clauses.join(" AND ")} ORDER BY room_seq ${order === "desc" ? "DESC" : "ASC"} LIMIT ?`, params: [...params, page.limit + 1] },
+      { sql: "SELECT COALESCE(MAX(room_seq),0) AS n FROM messages WHERE room_id = ?", params: [requestedRoomId] },
+    ]);
+    const room = assertRoomVisible(((roomRows[0] as RoomRow | undefined) ?? null), requestedRoomId, ctx.principal, ctx.requestId);
+    const rows = pageRowResults as unknown as MessageRow[];
     const pageRows = rows.slice(0, page.limit);
-    const items = [];
-    for (const row of pageRows) items.push(await serializeMessage(ctx.db, row));
+    const items = await serializeMessages(ctx.db, pageRows);
     const last = pageRows[pageRows.length - 1];
     const nextCursor = rows.length > page.limit && last !== undefined ? String(last.room_seq) : null;
     return {
       status: 200,
-      data: { room_id: room.room_id, latest_seq: await latestSeq(ctx.db, room.room_id), items },
+      data: { room_id: room.room_id, latest_seq: Number((seqRows[0] as { n?: number } | undefined)?.n ?? 0), items },
       page: {
         next_cursor: nextCursor,
         has_more: nextCursor !== null,
-        order: page.order,
+        order,
         total_estimate: null,
       },
     };

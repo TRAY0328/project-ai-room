@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Badge,
   Button,
@@ -702,6 +702,10 @@ export function MessageList({
   self,
   roomId,
   nameOf,
+  onLoadOlder,
+  loadingOlder = false,
+  hasOlder = false,
+  olderError = null,
 }: {
   messages: readonly MessageDto[];
   pending?: Array<{ item: { id: string; roomId: string; createdAt: string; blocks: MessageDto["blocks"]; state: string } }>;
@@ -712,6 +716,11 @@ export function MessageList({
   roomId?: string;
   /** Display name for a message author id (agent names live in the room). */
   nameOf?: (id: string) => string;
+  /** Ask the screen for the page before the oldest message on screen. */
+  onLoadOlder?: () => void;
+  loadingOlder?: boolean;
+  hasOlder?: boolean;
+  olderError?: string | null;
 }) {
   const visible = filter
     ? messages.filter((m) => JSON.stringify(m.blocks).toLowerCase().includes(filter.toLowerCase()))
@@ -720,9 +729,22 @@ export function MessageList({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
   const countRef = useRef(0);
+  /** Previous scrollTop: only an upward move asks for history. */
+  const lastTopRef = useRef(0);
   const [atBottom, setAtBottom] = useState(true);
   const [unseen, setUnseen] = useState(0);
   const [flashId, setFlashId] = useState<string | null>(null);
+  /** scroll height/top before an older page was asked for, to keep the reader's place. */
+  const anchorRef = useRef<{ height: number; top: number; firstId: string | null } | null>(null);
+  /** Set when older rows were inserted above; the growth effect must not call it news. */
+  const restoringRef = useRef(false);
+
+  const requestOlder = useCallback(() => {
+    const el = scrollRef.current;
+    if (el === null || onLoadOlder === undefined || loadingOlder || !hasOlder) return;
+    anchorRef.current = { height: el.scrollHeight, top: el.scrollTop, firstId: visible[0]?.message_id ?? null };
+    onLoadOlder();
+  }, [onLoadOlder, loadingOlder, hasOlder, visible]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     const el = scrollRef.current;
@@ -740,18 +762,25 @@ export function MessageList({
   useEffect(() => {
     countRef.current = 0;
     atBottomRef.current = true;
+    lastTopRef.current = 0;
     setAtBottom(true);
     setUnseen(0);
+    anchorRef.current = null;
     const frame = requestAnimationFrame(() => scrollToBottom("auto"));
     return () => cancelAnimationFrame(frame);
   }, [roomId, scrollToBottom]);
 
   // A message arriving while the reader is at the bottom stays in view; one that
-  // arrives while they are reading history offers the floating jump instead.
+  // arrives while they are reading history offers the floating jump instead. A
+  // page that was loaded *above* is neither news nor a jump — the reader keeps
+  // their place (the effect below restores it).
   useEffect(() => {
+    const restored = restoringRef.current;
+    restoringRef.current = false;
     const grew = visible.length > countRef.current;
     countRef.current = visible.length;
-    if (!grew) return;
+    if (!grew || restored) return;
+    if (loadingOlder || anchorRef.current !== null) return;
     const last = visible.at(-1);
     const own = last !== undefined && self !== undefined && last.author.actor_id === self.actor_id;
     if (atBottomRef.current || own) {
@@ -759,7 +788,33 @@ export function MessageList({
       return;
     }
     setUnseen((n) => n + 1);
-  }, [visible, self, scrollToBottom]);
+  }, [visible, self, scrollToBottom, loadingOlder]);
+
+  // Older rows only add height above the viewport: move the scroll offset by the
+  // same amount, so the message the reader was looking at does not move. This is
+  // a layout effect so the correction lands before paint — and the smooth scroll
+  // is turned off for the assignment, because an animated scroll can be
+  // interrupted by the browser's own scroll anchoring and land back at zero.
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    if (anchor === null) return;
+    const el = scrollRef.current;
+    if (el === null) {
+      anchorRef.current = null;
+      return;
+    }
+    if (loadingOlder) return;
+    if (visible[0]?.message_id === anchor.firstId) return;
+    const added = el.scrollHeight - anchor.height;
+    if (added > 0) {
+      const previous = el.style.scrollBehavior;
+      el.style.scrollBehavior = "auto";
+      el.scrollTop = anchor.top + added;
+      el.style.scrollBehavior = previous;
+      restoringRef.current = true;
+    }
+    anchorRef.current = null;
+  }, [visible, loadingOlder]);
 
   useEffect(() => {
     if (flashId === null) return;
@@ -810,12 +865,36 @@ export function MessageList({
         data-empty={visible.length === 0 && pending.length === 0 ? "true" : undefined}
         ref={scrollRef}
         onScroll={(e) => {
-          const near = isNearBottom(e.currentTarget);
+          const el = e.currentTarget;
+          const near = isNearBottom(el);
           atBottomRef.current = near;
           setAtBottom(near);
           if (near) setUnseen(0);
+          // History is requested only on a real upward move inside content that
+          // can scroll: the container sits at 0 while the first page is still on
+          // its way (and its height jitters by a few pixels as it settles), which
+          // is not the reader asking for older messages.
+          const previousTop = lastTopRef.current;
+          lastTopRef.current = el.scrollTop;
+          const scrollable = el.scrollHeight - el.clientHeight > 200;
+          if (scrollable && previousTop > 150 && el.scrollTop < 96 && el.scrollTop < previousTop - 8) requestOlder();
         }}
       >
+        {hasOlder || loadingOlder || olderError !== null ? (
+          <div className="air-chat-older" data-testid="chat-older">
+            {loadingOlder ? (
+              <span className="air-hint">이전 메시지를 불러오는 중…</span>
+            ) : olderError !== null ? (
+              <button type="button" className="air-chat-older-btn" onClick={requestOlder}>
+                이전 메시지를 불러오지 못했습니다 — 다시 시도
+              </button>
+            ) : (
+              <button type="button" className="air-chat-older-btn" onClick={requestOlder} disabled={!hasOlder}>
+                이전 메시지 더 보기
+              </button>
+            )}
+          </div>
+        ) : null}
         {visible.length === 0 && pending.length === 0 ? (
           <div className="air-chat-empty">
             <span className="air-chat-empty-icon" aria-hidden="true">💬</span>

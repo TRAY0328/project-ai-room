@@ -25,7 +25,7 @@ import {
   type SessionAssurance,
   type Subject,
 } from "@ai-room/contracts";
-import { allRows, firstRow, type SqlDb } from "@ai-room/auth";
+import { allRows, batchRows, firstRow, type SqlDb } from "@ai-room/auth";
 
 export interface Principal {
   readonly subject: Subject;
@@ -52,24 +52,25 @@ export interface ApprovalRecord {
 export async function loadPrincipal(db: SqlDb, input: { subject: Subject; assurance: SessionAssurance; sessionId?: string; session_id?: string }): Promise<Principal> {
   const { subject } = input;
   const actorKind = subject.kind === "owner" ? "owner" : "agent";
-  const roomAcl = await allRows<{ room_id: string; role: "owner" | "contributor" | "viewer" }>(
-    db,
-    "SELECT room_id, role FROM room_acl WHERE actor_kind = ? AND actor_id = ? AND revoked_at IS NULL",
-    actorKind,
-    subject.id,
-  );
-  const projectAcl = await allRows<{ project_id: string; role: "owner" | "contributor" | "viewer" }>(
-    db,
-    "SELECT project_id, role FROM project_acl WHERE actor_kind = ? AND actor_id = ? AND revoked_at IS NULL",
-    actorKind,
-    subject.id,
-  );
-  const roomMemberships = await allRows<{ room_id: string }>(
-    db,
-    "SELECT room_id FROM room_members WHERE actor_kind = ? AND actor_id = ? AND left_at IS NULL",
-    actorKind,
-    subject.id,
-  );
+  // The three membership reads are independent, so they belong in one batch
+  // rather than three sequential round trips on every authenticated request.
+  const [roomAclRows, projectAclRows, membershipRows] = await batchRows(db, [
+    {
+      sql: "SELECT room_id, role FROM room_acl WHERE actor_kind = ? AND actor_id = ? AND revoked_at IS NULL",
+      params: [actorKind, subject.id],
+    },
+    {
+      sql: "SELECT project_id, role FROM project_acl WHERE actor_kind = ? AND actor_id = ? AND revoked_at IS NULL",
+      params: [actorKind, subject.id],
+    },
+    {
+      sql: "SELECT room_id FROM room_members WHERE actor_kind = ? AND actor_id = ? AND left_at IS NULL",
+      params: [actorKind, subject.id],
+    },
+  ]);
+  const roomAcl = roomAclRows as Array<{ room_id: string; role: "owner" | "contributor" | "viewer" }>;
+  const projectAcl = projectAclRows as Array<{ project_id: string; role: "owner" | "contributor" | "viewer" }>;
+  const roomMemberships = membershipRows as Array<{ room_id: string }>;
   const roomIds = new Set<string>([...roomAcl.map((row) => row.room_id), ...roomMemberships.map((row) => row.room_id)]);
   const projectIds = new Set<string>(projectAcl.map((row) => row.project_id));
   return {

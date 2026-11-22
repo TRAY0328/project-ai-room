@@ -13,7 +13,7 @@ import {
   type PageInfo,
   type Subject,
 } from "@ai-room/contracts";
-import { allRows, count, firstRow, nowIso, scalar, type SqlDb } from "@ai-room/auth";
+import { allRows, count, firstRow, nowIso, scalar, batchRows, placeholders, type SqlDb } from "@ai-room/auth";
 import type { Principal } from "@ai-room/permissions";
 import type { AuthService } from "@ai-room/auth";
 import type { Env } from "./env.js";
@@ -88,6 +88,15 @@ export interface RoomRow {
 
 export async function getRoom(db: SqlDb, roomId: string, principal: Principal, requestId: string): Promise<RoomRow> {
   const room = await firstRow<RoomRow>(db, "SELECT * FROM rooms WHERE room_id = ? AND deleted_at IS NULL", roomId);
+  return assertRoomVisible(room, roomId, principal, requestId);
+}
+
+/**
+ * The same check `getRoom` makes, for a handler that already read the row in a
+ * batched query. A room a caller cannot see answers "not found or hidden", so an
+ * id cannot be probed for existence.
+ */
+export function assertRoomVisible(room: RoomRow | null, roomId: string, principal: Principal, requestId: string): RoomRow {
   if (room === null) throw notFoundOrHidden(requestId, "room", roomId);
   if (principal.subject.kind !== "owner" && !principal.membership.roomIds.includes(room.room_id)) {
     throw new ApiError({ code: "ROOM_ACCESS_DENIED", requestId, details: { reason_code: "NOT_ROOM_MEMBER" } });
@@ -156,45 +165,85 @@ export interface WireMessage {
 }
 
 export async function serializeMessage(db: SqlDb, message: MessageRow, options: { includeDeletedContent?: boolean } = {}): Promise<WireMessage> {
-  const version = await firstRow<{ blocks_json: string; body_plain_text: string }>(
-    db,
-    "SELECT blocks_json, body_plain_text FROM message_versions WHERE message_id = ? AND revision = ?",
-    message.message_id,
-    message.current_revision,
-  );
-  const deleted = message.deleted_at !== null;
-  const includeContent = !deleted || options.includeDeletedContent === true;
-  const mentions = await allRows<{ mentioned_agent_id: string }>(
-    db,
-    "SELECT mentioned_agent_id FROM message_mentions WHERE message_id = ?",
-    message.message_id,
-  );
-  const reactions = await allRows<{ emoji_key: string; n: number }>(
-    db,
-    "SELECT emoji_key, COUNT(*) AS n FROM message_reactions WHERE message_id = ? GROUP BY emoji_key ORDER BY n DESC",
-    message.message_id,
-  );
-  const tombstone = deleted
-    ? await firstRow<{ reason: string }>(db, "SELECT reason FROM message_tombstones WHERE message_id = ?", message.message_id)
-    : null;
-  return {
-    message_id: message.message_id,
-    room_id: message.room_id,
-    room_seq: message.room_seq,
-    author_kind: message.author_kind,
-    author_id: message.author_id,
-    reply_to_id: message.reply_to_id,
-    revision: message.current_revision,
-    status: message.status,
-    created_at: message.created_at,
-    updated_at: message.updated_at,
-    deleted_at: message.deleted_at,
-    blocks: includeContent && version !== null ? (JSON.parse(version.blocks_json) as WireMessage["blocks"]) : [],
-    body_plain_text: includeContent && version !== null ? version.body_plain_text : null,
-    mentioned_agent_ids: mentions.map((row) => row.mentioned_agent_id),
-    reactions: reactions.map((row) => ({ emoji_key: row.emoji_key, count: row.n })),
-    tombstone_reason: tombstone?.reason ?? null,
-  };
+  const [wire] = await serializeMessages(db, [message], options);
+  // The single-message path is the same code, so a live frame and a page item can
+  // never disagree about what a message looks like.
+  return wire!;
+}
+
+/**
+ * Serializes a page of messages with a FIXED number of queries.
+ *
+ * The obvious implementation asks four questions per message (its version, its
+ * mentions, its reactions, its tombstone). At 40 messages that is 160 sequential
+ * D1 round trips — seconds of waiting for a screen that is otherwise ready. Here
+ * each relation is read once for the whole page with `message_id IN (...)`, and
+ * the four reads travel together in one `batch()`. Content and ordering are
+ * identical to the per-message version; only the number of round trips changes.
+ */
+export async function serializeMessages(db: SqlDb, messages: readonly MessageRow[], options: { includeDeletedContent?: boolean } = {}): Promise<WireMessage[]> {
+  if (messages.length === 0) return [];
+  const ids = messages.map((message) => message.message_id);
+  const inList = placeholders(ids.length);
+  const [versionRows, mentionRows, reactionRows, tombstoneRows] = await batchRows(db, [
+    {
+      // The current revision is per message, so it is joined rather than bound.
+      sql: `SELECT v.message_id, v.blocks_json, v.body_plain_text
+            FROM message_versions v JOIN messages m ON m.message_id = v.message_id AND m.current_revision = v.revision
+            WHERE v.message_id IN (${inList})`,
+      params: ids,
+    },
+    { sql: `SELECT message_id, mentioned_agent_id FROM message_mentions WHERE message_id IN (${inList})`, params: ids },
+    {
+      sql: `SELECT message_id, emoji_key, COUNT(*) AS n FROM message_reactions WHERE message_id IN (${inList}) GROUP BY message_id, emoji_key ORDER BY n DESC`,
+      params: ids,
+    },
+    { sql: `SELECT message_id, reason FROM message_tombstones WHERE message_id IN (${inList})`, params: ids },
+  ]);
+
+  const versions = new Map<string, { blocks_json: string; body_plain_text: string }>();
+  for (const row of versionRows as Array<{ message_id: string; blocks_json: string; body_plain_text: string }>) {
+    versions.set(row.message_id, row);
+  }
+  const mentions = new Map<string, string[]>();
+  for (const row of mentionRows as Array<{ message_id: string; mentioned_agent_id: string }>) {
+    const list = mentions.get(row.message_id);
+    if (list === undefined) mentions.set(row.message_id, [row.mentioned_agent_id]);
+    else list.push(row.mentioned_agent_id);
+  }
+  const reactions = new Map<string, Array<{ emoji_key: string; count: number }>>();
+  for (const row of reactionRows as Array<{ message_id: string; emoji_key: string; n: number }>) {
+    const list = reactions.get(row.message_id);
+    const entry = { emoji_key: row.emoji_key, count: row.n };
+    if (list === undefined) reactions.set(row.message_id, [entry]);
+    else list.push(entry);
+  }
+  const tombstones = new Map<string, string>();
+  for (const row of tombstoneRows as Array<{ message_id: string; reason: string }>) tombstones.set(row.message_id, row.reason);
+
+  return messages.map((message) => {
+    const version = versions.get(message.message_id) ?? null;
+    const deleted = message.deleted_at !== null;
+    const includeContent = !deleted || options.includeDeletedContent === true;
+    return {
+      message_id: message.message_id,
+      room_id: message.room_id,
+      room_seq: message.room_seq,
+      author_kind: message.author_kind,
+      author_id: message.author_id,
+      reply_to_id: message.reply_to_id,
+      revision: message.current_revision,
+      status: message.status,
+      created_at: message.created_at,
+      updated_at: message.updated_at,
+      deleted_at: message.deleted_at,
+      blocks: includeContent && version !== null ? (JSON.parse(version.blocks_json) as WireMessage["blocks"]) : [],
+      body_plain_text: includeContent && version !== null ? version.body_plain_text : null,
+      mentioned_agent_ids: mentions.get(message.message_id) ?? [],
+      reactions: reactions.get(message.message_id) ?? [],
+      tombstone_reason: deleted ? tombstones.get(message.message_id) ?? null : null,
+    };
+  });
 }
 
 export async function recordProjectEvent(input: {

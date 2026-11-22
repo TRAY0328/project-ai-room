@@ -25,6 +25,7 @@ import {
 } from "@ai-room/contracts";
 import {
   allRows,
+  batchRows,
   count,
   firstRow,
   isValidId,
@@ -411,26 +412,35 @@ export class AuthService {
       throw new ApiError({ code: verification.reason === "expired" ? "AUTH_EXPIRED" : "AUTH_REVOKED", requestId });
     }
     const claims = verification.claims;
-    const session = await firstRow<{ revoked_at: string | null; expires_at: string; session_assurance: TokenAssurance; subject_id: string; subject_kind: "owner" | "agent" }>(
-      this.db,
-      "SELECT revoked_at, expires_at, session_assurance, subject_id, subject_kind FROM auth_sessions WHERE session_id = ?",
-      claims.session_id,
-    );
+    // Session row, subject row and the "last seen" touch travel in one batch: the
+    // claims already name the subject table, and none of the three depends on
+    // another's answer. Three round trips per request become one.
+    const subjectSql =
+      claims.sub_kind === "owner"
+        ? "SELECT owner_id, disabled_at FROM owners WHERE owner_id = ?"
+        : "SELECT agent_id, disabled_at, verification_state, platform_admin FROM agents WHERE agent_id = ?";
+    const [sessionRows = [], subjectRows = []] = await batchRows(this.db, [
+      {
+        sql: "SELECT revoked_at, expires_at, session_assurance, subject_id, subject_kind FROM auth_sessions WHERE session_id = ?",
+        params: [claims.session_id],
+      },
+      { sql: subjectSql, params: [claims.sub_id] },
+      { sql: "UPDATE auth_sessions SET last_seen_at = ? WHERE session_id = ?", params: [nowIso(), claims.session_id] },
+    ]);
+    const session = (sessionRows[0] ?? null) as {
+      revoked_at: string | null;
+      expires_at: string;
+      session_assurance: TokenAssurance;
+      subject_id: string;
+      subject_kind: "owner" | "agent";
+    } | null;
     if (session === null || session.revoked_at !== null) throw new ApiError({ code: "AUTH_REVOKED", requestId });
     if (Date.parse(session.expires_at) <= Date.now()) throw new ApiError({ code: "AUTH_EXPIRED", requestId });
     if (session.subject_id !== claims.sub_id || session.subject_kind !== claims.sub_kind) {
       throw new ApiError({ code: "AUTH_REVOKED", requestId });
     }
-    await this.db
-      .prepare("UPDATE auth_sessions SET last_seen_at = ? WHERE session_id = ?")
-      .bind(nowIso(), claims.session_id)
-      .run();
     if (claims.sub_kind === "owner") {
-      const owner = await firstRow<{ owner_id: string; disabled_at: string | null }>(
-        this.db,
-        "SELECT owner_id, disabled_at FROM owners WHERE owner_id = ?",
-        claims.sub_id,
-      );
+      const owner = (subjectRows[0] ?? null) as { owner_id: string; disabled_at: string | null } | null;
       if (owner === null || owner.disabled_at !== null) throw new ApiError({ code: "AUTH_REVOKED", requestId });
       return {
         subject: {
@@ -443,12 +453,12 @@ export class AuthService {
         session_id: claims.session_id,
       };
     }
-    const agent = await firstRow<{
+    const agent = (subjectRows[0] ?? null) as {
       agent_id: string;
       disabled_at: string | null;
       verification_state: "self_declared" | "discovery_verified" | "provider_verified";
       platform_admin: number;
-    }>(this.db, "SELECT agent_id, disabled_at, verification_state, platform_admin FROM agents WHERE agent_id = ?", claims.sub_id);
+    } | null;
     if (agent === null || agent.disabled_at !== null) throw new ApiError({ code: "AUTH_REVOKED", requestId });
     return {
       subject: {

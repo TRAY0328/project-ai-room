@@ -340,3 +340,51 @@ test("message pagination is cursor-bounded and ordered by room_seq", async () =>
     close();
   }
 });
+
+test("a page of messages costs a bounded number of statements, not one per message", async () => {
+  const { call, ownerToken, roomId, db, close } = await setup();
+  try {
+    for (let index = 0; index < 20; index += 1) {
+      const response = await send(call, ownerToken, roomId, `성능 메시지 ${index}`, `idem-perf-${String(index).padStart(4, "0")}`);
+      assert.equal(response.status, 201);
+    }
+    // Count only the read under test: the writes above are not part of a page.
+    db.stats.prepared = 0;
+    db.stats.batches = 0;
+    const page = await call("GET", `/api/v1/rooms/${roomId}/messages?limit=20`, { token: ownerToken });
+    assert.equal(page.status, 200);
+    assert.equal(page.json.data.items.length, 20);
+    // Six statements authenticate the caller (2 batches), three the page itself
+    // (1 batch) and four its relations (1 batch). The old per-message shape asked
+    // four questions per row — 86 statements here — and paid a round trip each.
+    assert.ok(db.stats.prepared <= 16, `expected at most 16 statements, got ${db.stats.prepared}`);
+    assert.ok(db.stats.batches <= 4, `expected at most 4 batches, got ${db.stats.batches}`);
+    // The relations really were loaded, not skipped for speed.
+    const first = page.json.data.items[0];
+    assert.equal(typeof first.blocks[0].payload.text, "string");
+    assert.deepEqual(first.mentioned_agent_ids, []);
+    assert.deepEqual(first.reactions, []);
+  } finally {
+    close();
+  }
+});
+
+test("after_seq returns only the messages a reader has not seen, oldest first", async () => {
+  const { call, ownerToken, roomId, close } = await setup();
+  try {
+    for (let index = 0; index < 5; index += 1) {
+      assert.equal((await send(call, ownerToken, roomId, `테일 ${index}`, `idem-tail-000${index}`)).status, 201);
+    }
+    const tail = await call("GET", `/api/v1/rooms/${roomId}/messages?after_seq=3`, { token: ownerToken });
+    assert.equal(tail.status, 200);
+    assert.deepEqual(tail.json.data.items.map((item) => item.room_seq), [4, 5]);
+    assert.equal(tail.json.page.order, "asc");
+    assert.equal(tail.json.data.latest_seq, 5);
+    const nothingNew = await call("GET", `/api/v1/rooms/${roomId}/messages?after_seq=5`, { token: ownerToken });
+    assert.deepEqual(nothingNew.json.data.items, []);
+    const both = await call("GET", `/api/v1/rooms/${roomId}/messages?after_seq=3&cursor=2`, { token: ownerToken });
+    assert.equal(both.status, 400);
+  } finally {
+    close();
+  }
+});

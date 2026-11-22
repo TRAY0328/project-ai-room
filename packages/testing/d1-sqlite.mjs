@@ -64,7 +64,7 @@ class ShimStatement {
 class ShimDb {
   #db;
   /** Counts every statement so a test can assert a bounded number of queries. */
-  stats = { prepared: 0, writes: 0 };
+  stats = { prepared: 0, writes: 0, batches: 0 };
   constructor(raw) {
     this.#db = raw;
   }
@@ -76,9 +76,18 @@ class ShimDb {
     this.#db.exec(sql);
     return { success: true };
   }
+  /**
+   * D1's `batch()` answers one `D1Result` per statement, reads included, so a
+   * caller can read rows back out of it. Returning `run()` metadata here would
+   * silently drop every SELECT result and make a batched read look empty.
+   */
   async batch(statements) {
+    this.stats.batches += 1;
     const out = [];
-    for (const statement of statements) out.push(await statement.run());
+    for (const statement of statements) {
+      const { results } = await statement.all();
+      out.push({ results, success: true, meta: { changes: 0, rows_read: results.length } });
+    }
     return out;
   }
   get raw() {

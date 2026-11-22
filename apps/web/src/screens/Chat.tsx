@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Banner, Button, Card, Dialog, Drawer, Field, Icon, IconButton, Reveal, SectionHeader, Tabs, TextArea, TextInput } from "@ai-room/design-system";
 import { useApp } from "../state/AppState.js";
 import { useResource, relativeTime, listOf } from "../api/hooks.js";
@@ -7,6 +7,7 @@ import { newIdempotencyKey } from "../api/client.js";
 import type { AgentSummary, MemoryRecordDto, MessageDto, RoomSummary, SearchHitDto } from "../api/types.js";
 import { demoAgents, demoMemory, demoMessages, demoRooms, demoSearchHits } from "../demo/fixtures.js";
 import { normalizeWireMessage, type WireMessage } from "../api/wire.js";
+import { readCachedMessages, readCachedRooms, readLastRoomId, rememberLastRoomId, writeCachedMessages, writeCachedRooms } from "../api/chat-cache.js";
 import { Composer, EditHistoryDialog, MessageList, ThreadPanel, type ComposerSendMeta, type MessageActionHandlers } from "../components/chat/index.js";
 import { DemoChip, DemoNote, EmptyHint, ResourceView, ScreenHeader, Section } from "../components/ui.js";
 import { openAppNav } from "../lib/shell-nav.js";
@@ -36,7 +37,17 @@ function normalizeRoom(raw: RoomSummary): RoomSummary {
 function useRooms() {
   const { client, gatewayUrl, demoMode } = useApp();
   const rooms = useResource<RoomSummary[]>(client, "/v1/rooms", { enabled: Boolean(gatewayUrl) && !demoMode, pollMs: 30000 });
-  const list = demoMode ? demoRooms : rooms.state.kind === "ready" ? listOf<RoomSummary>(rooms.state.data).map(normalizeRoom) : [];
+  // The list this browser saw last time is drawn first, so the room name and the
+  // default room do not wait for a request. The server answer replaces it.
+  const cached = useMemo(() => readCachedRooms(), []);
+  const live = useMemo(
+    () => (rooms.state.kind === "ready" ? listOf<RoomSummary>(rooms.state.data).map(normalizeRoom) : null),
+    [rooms.state],
+  );
+  useEffect(() => {
+    if (live !== null && live.length > 0 && !demoMode) writeCachedRooms(live);
+  }, [live, demoMode]);
+  const list = demoMode ? demoRooms : live !== null && live.length > 0 ? live : cached;
   return { list, state: rooms.state, reload: rooms.reload };
 }
 
@@ -53,31 +64,64 @@ const LIVE_TEXT: Record<StreamStatus, string> = {
   error: "실시간 연결 오류",
 };
 
+/** Newest messages drawn on entering a room; the rest follows the scroll. */
+const INITIAL_PAGE = 40;
+/** One older page per scroll-to-top. */
+const OLDER_PAGE = 30;
+
 /* ----------------------------------------------------------------- MAINCHAT */
 
 export function MainChatScreen({ navigate }: { navigate: Navigate }) {
-  const { client, gatewayUrl, demoMode, outbox, enqueueMessage, flushOutbox, connection, self, renewSession } = useApp();
+  const { client, gatewayUrl, demoMode, outbox, enqueueMessage, flushOutbox, connection, self, session, renewSession } = useApp();
   const rooms = useRooms();
-  // No placeholder room id: until the room list arrives there is nothing to
-  // read or write, and guessing "room-default" only produced a 403 and a
-  // message stuck in the outbox.
-  const [roomId, setRoomId] = useState<string>(rooms.list[0]?.room_id ?? "");
+  // The room this browser was last in is remembered, so the first message request
+  // starts on mount instead of after the room list answers. Until the list
+  // arrives there is nothing to contradict it; if the room is gone (or no longer
+  // readable) the effect below moves to the first room the server lists.
+  const rememberedRoomId = useMemo(() => readLastRoomId(), []);
+  const [roomId, setRoomId] = useState<string>(rememberedRoomId ?? "");
   const agentsRes = useResource<AgentSummary[]>(client, "/v1/agents", { enabled: Boolean(gatewayUrl) && !demoMode });
-  const messagesRes = useResource<{ messages?: WireMessage[]; items?: WireMessage[] }>(client, roomId === "" ? null : `/v1/rooms/${encodeURIComponent(roomId)}/messages`, {
+  const messagesRes = useResource<{ room_id?: string; messages?: WireMessage[]; items?: WireMessage[]; latest_seq?: number }>(client, roomId === "" ? null : `/v1/rooms/${encodeURIComponent(roomId)}/messages`, {
     enabled: Boolean(gatewayUrl) && !demoMode,
-    query: { limit: 50 },
-    // Safety net, not the mechanism: the live socket is what makes a message
-    // appear at once. A missed frame still heals within this interval.
-    pollMs: 30000,
+    // One screenful plus a little: the rest arrives when the reader scrolls up,
+    // which keeps the first answer small and the first paint quick.
+    query: { limit: INITIAL_PAGE },
   });
+
+  // What this browser already had for the room, in the renderer's shape. It is a
+  // first paint, not an answer: the server page replaces it by message_id.
+  const [seeded, setSeeded] = useState<MessageDto[]>(() =>
+    demoMode || session === null || rememberedRoomId === null ? [] : [...(readCachedMessages(rememberedRoomId)?.messages ?? [])],
+  );
+  const [older, setOlder] = useState<MessageDto[]>([]);
+  const [olderState, setOlderState] = useState<{ loading: boolean; done: boolean; error: string | null }>({ loading: false, done: false, error: null });
+  const loadingOlderRef = useRef(false);
 
   const agentList = demoMode ? demoAgents : agentsRes.state.kind === "ready" ? listOf<AgentSummary>(agentsRes.state.data) : [];
   const agentName = (id: string): string => agentList.find((a) => a.agent_id === id)?.display_name ?? (id === self.actor_id ? self.display_name : id);
-  const baseMessages: MessageDto[] = demoMode
-    ? demoMessages.filter((m) => m.room_id === roomId)
-    : messagesRes.state.kind === "ready"
-      ? (messagesRes.state.data.messages ?? messagesRes.state.data.items ?? []).map((m) => normalizeWireMessage(m, agentName))
-      : [];
+  const serverMessages = useMemo<MessageDto[]>(() => {
+    if (demoMode) return demoMessages.filter((m) => m.room_id === roomId);
+    if (messagesRes.state.kind !== "ready") return [];
+    const data = messagesRes.state.data;
+    // The resource keeps its last answer while a new path loads; that answer can
+    // belong to the room the reader just left. Drawing it into this room would
+    // mix two conversations, so it is only used when it names this room.
+    if (typeof data.room_id === "string" && data.room_id !== roomId) return [];
+    const items = data.items ?? data.messages ?? [];
+    return items.map((m) => normalizeWireMessage(m, agentName));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoMode, roomId, messagesRes.state, agentList, self.actor_id, self.display_name]);
+
+  // Server rows win over the cache and over a page loaded by scrolling up; the
+  // merge is by message_id so a message is never drawn twice.
+  const baseMessages: MessageDto[] = useMemo(() => {
+    if (demoMode) return serverMessages;
+    const byId = new Map<string, MessageDto>();
+    for (const message of seeded) byId.set(message.message_id, message);
+    for (const message of older) byId.set(message.message_id, message);
+    for (const message of serverMessages) byId.set(message.message_id, message);
+    return [...byId.values()];
+  }, [demoMode, serverMessages, seeded, older]);
 
   const [replyTo, setReplyTo] = useState<MessageDto | null>(null);
   const [threadRoot, setThreadRoot] = useState<MessageDto | null>(null);
@@ -107,10 +151,134 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
     return merged.sort((a, b) => (a.room_seq ?? Number.MAX_SAFE_INTEGER) - (b.room_seq ?? Number.MAX_SAFE_INTEGER));
   }, [baseMessages, realtimeMessages]);
 
+  /** The newest `agentName`, readable from a timer without re-creating it. */
+  const agentNameRef = useRef(agentName);
+  agentNameRef.current = agentName;
+  const messagesRef = useRef<MessageDto[]>(messages);
+  messagesRef.current = messages;
+  const reloadMessagesRef = useRef(messagesRes.reload);
+  reloadMessagesRef.current = messagesRes.reload;
+  /** Whether the first page of this room has arrived (used by the stream resync). */
+  const pageReadyRef = useRef(messagesRes.state.kind === "ready");
+  pageReadyRef.current = messagesRes.state.kind === "ready";
+
+  // Entering (or switching) a room: the previous room's cache, older pages and
+  // live rows do not belong to this one.
+  useEffect(() => {
+    if (roomId === "") return;
+    rememberLastRoomId(roomId);
+    loadingOlderRef.current = false;
+    setOlder([]);
+    setOlderState({ loading: false, done: false, error: null });
+    setSeeded(demoMode || session === null ? [] : [...(readCachedMessages(roomId)?.messages ?? [])]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId]);
+
+  // Remember what is on screen, so the next visit paints before the network
+  // answers. Throttled: a busy room must not write storage per message.
+  const cachedAtRef = useRef(0);
+  useEffect(() => {
+    if (demoMode || roomId === "" || messages.length === 0) return;
+    const now = Date.now();
+    if (now - cachedAtRef.current < 1500) return;
+    cachedAtRef.current = now;
+    const state = messagesRes.state;
+    const latest = state.kind === "ready" && (state.data.room_id === undefined || state.data.room_id === roomId) ? state.data.latest_seq ?? null : null;
+    writeCachedMessages(roomId, messages, latest);
+  }, [messages, roomId, demoMode, messagesRes.state]);
+
+  /**
+   * One older page, keyed by the oldest `room_seq` on screen. `done` is set when
+   * the server returns fewer rows than asked for — the client cannot see
+   * `page.has_more` (the envelope is unwrapped), and one short page is proof.
+   */  const loadOlder = useCallback(async () => {
+    if (demoMode || roomId === "" || !gatewayUrl || loadingOlderRef.current || olderState.done) return;
+    const seqs = messagesRef.current.map((m) => m.room_seq).filter((seq): seq is number => typeof seq === "number");
+    if (seqs.length === 0) return;
+    const oldestSeq = Math.min(...seqs);
+    if (oldestSeq <= 1) {
+      setOlderState({ loading: false, done: true, error: null });
+      return;
+    }
+    loadingOlderRef.current = true;
+    setOlderState((prev) => ({ ...prev, loading: true, error: null }));
+    const result = await client.request<{ items?: WireMessage[]; messages?: WireMessage[] }>(
+      "GET",
+      `/v1/rooms/${encodeURIComponent(roomId)}/messages?limit=${OLDER_PAGE}&cursor=${oldestSeq}`,
+    );
+    loadingOlderRef.current = false;
+    if (!result.ok) {
+      setOlderState({ loading: false, done: false, error: `${result.code}: ${result.message}` });
+      return;
+    }
+    const wires = result.data.items ?? result.data.messages ?? [];
+    const normalized = wires.map((wire) => normalizeWireMessage(wire, agentNameRef.current));
+    setOlder((prev) => {
+      const seen = new Set(prev.map((m) => m.message_id));
+      return [...normalized.filter((m) => !seen.has(m.message_id)), ...prev];
+    });
+    setOlderState({ loading: false, done: wires.length < OLDER_PAGE, error: null });
+  }, [client, demoMode, gatewayUrl, roomId, olderState.done]);
+
+  // A first page shorter than the page size is the whole room: there is nothing
+  // above it, so the "more" control and the scroll trigger must not appear.
+  useEffect(() => {
+    if (demoMode || messagesRes.state.kind !== "ready") return;
+    const data = messagesRes.state.data;
+    if (data.room_id !== undefined && data.room_id !== roomId) return;
+    const count = (data.items ?? data.messages ?? []).length;
+    if (count === 0 || count >= INITIAL_PAGE) return;
+    setOlderState((prev) => (prev.done ? prev : { ...prev, done: true }));
+  }, [messagesRes.state, roomId, demoMode]);
+
+  // Without a live socket the page would go stale silently. A tail sync asks only
+  // for messages after the newest one on screen (`after_seq`), so the safety net
+  // is a few hundred bytes instead of the whole page.
+  useEffect(() => {
+    if (demoMode || !gatewayUrl || roomId === "" || live.status === "live") return;
+    let cancelled = false;
+    const sync = async () => {
+      const seqs = messagesRef.current.map((m) => m.room_seq).filter((seq): seq is number => typeof seq === "number");
+      const head = seqs.length === 0 ? 0 : Math.max(...seqs);
+      const result = await client.request<{ items?: WireMessage[]; latest_seq?: number }>(
+        "GET",
+        `/v1/rooms/${encodeURIComponent(roomId)}/messages?after_seq=${head}&limit=100`,
+      );
+      if (cancelled || !result.ok) return;
+      const wires = result.data.items ?? [];
+      if (wires.length > 0) {
+        const normalized = wires.map((wire) => normalizeWireMessage(wire, agentNameRef.current));
+        setRealtimeMessages((prev) => {
+          const byId = new Map(prev.map((m) => [m.message_id, m]));
+          for (const m of normalized) byId.set(m.message_id, m);
+          return [...byId.values()];
+        });
+        return;
+      }
+      // Nothing after the head although the room moved on: something the reader
+      // had went away. The full page is the honest repair.
+      if (head > 0 && typeof result.data.latest_seq === "number" && result.data.latest_seq > head) reloadMessagesRef.current();
+    };
+    const timer = window.setInterval(() => void sync(), 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [client, demoMode, gatewayUrl, roomId, live.status]);
+
   // Realtime room stream: only when a gateway and a real room exist. Gaps trigger an HTTPS resync.
+  const pageState = messagesRes.state.kind;
   useEffect(() => {
     if (!gatewayUrl || demoMode || !client.baseUrl || roomId === "") {
       setLive({ status: "idle", received: 0 });
+      return;
+    }
+    // Subscribing before the first page is in hand means subscribing without a
+    // cursor, and the server answers that with "send me a snapshot" — which made
+    // the screen fetch the very page it was already waiting for. Waiting for the
+    // page (a fraction of a second now) lets the socket start at a real cursor.
+    if (pageState === "idle" || pageState === "loading") {
+      setLive((prev) => (prev.status === "live" ? prev : { ...prev, status: "connecting" }));
       return;
     }
     const stream = new RoomStream({
@@ -123,6 +291,10 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
         setLive((prev) => ({ ...prev, received: prev.received + 1 }));
       },
       onResync: (reason) => {
+        // A first subscribe without a cursor is answered with "send me a snapshot".
+        // The page request already in flight IS that snapshot: reloading here
+        // would open a second identical request and make the reader wait twice.
+        if (/no_cursor|snapshot/i.test(reason) && !pageReadyRef.current) return;
         messagesRes.reload();
         // A first subscribe has no cursor yet, so the server always asks for a
         // snapshot. That is the normal path, not a warning the user must read.
@@ -140,7 +312,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
       streamRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gatewayUrl, demoMode, roomId, client, renewSession]);
+  }, [gatewayUrl, demoMode, roomId, client, renewSession, pageState]);
 
   useEffect(() => {
     setRealtimeMessages([]);
@@ -413,6 +585,10 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
                   self={self}
                   roomId={roomId}
                   nameOf={agentName}
+                  onLoadOlder={() => void loadOlder()}
+                  loadingOlder={olderState.loading}
+                  hasOlder={!olderState.done}
+                  olderError={olderState.error}
                 />
               ) : null}
 

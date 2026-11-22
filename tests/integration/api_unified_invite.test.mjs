@@ -205,12 +205,14 @@ test("the unified invite code keeps working when every DB invite is used or revo
     assert.equal(after.status, 201, after.text);
 
     // A DB-only one-time code is refused once it is spent — the master rule does
-    // not widen any other invite.
+    // not widen any other invite. The expiry is relative to now: a hardcoded date
+    // made this test start failing the day it named.
     const oneTime = "inv_one_time_code_for_this_test_0001";
     const sha = await (await import("node:crypto")).createHash("sha256").update(oneTime).digest("hex");
     const ownerId = (await env.DB.prepare("SELECT owner_id FROM owners LIMIT 1").all()).results[0].owner_id;
+    const oneTimeExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     await env.DB.prepare("INSERT INTO agent_invites (invite_id, secret_hash, created_by, created_at, expires_at) VALUES (?,?,?,?,?)")
-      .bind("inst_TESTONETIME0001", sha, ownerId, "2026-11-21T03:00:00.000Z", "2026-11-22T03:00:00.000Z")
+      .bind("inst_TESTONETIME0001", sha, ownerId, "2026-11-21T03:00:00.000Z", oneTimeExpiry)
       .run();
     const spent = await call("POST", "/api/v1/agents/register", {
       idempotencyKey: "register-one-time",

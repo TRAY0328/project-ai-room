@@ -49,6 +49,43 @@ export async function scalar<T extends string | number | null>(db: SqlDb, sql: s
   return values.length === 0 ? null : (values[0] ?? null);
 }
 
+export interface BatchRead {
+  readonly sql: string;
+  readonly params?: readonly unknown[];
+}
+
+/**
+ * Several reads in ONE round trip.
+ *
+ * D1 charges a full network round trip per statement; a page of 40 messages used
+ * to cost one round trip per message per relation. `batch()` sends the whole
+ * list in a single request, so the page costs one round trip for the messages
+ * and one for their relations. A caller that only has the per-statement fallback
+ * (a shim without `batch`) gets the same rows, just slower.
+ *
+ * Only reads belong here: a batched write would hide which statement failed.
+ */
+export async function batchRows(db: SqlDb, reads: readonly BatchRead[]): Promise<Record<string, unknown>[][]> {
+  if (reads.length === 0) return [];
+  if (typeof db.batch === "function") {
+    const results = (await db.batch(reads.map((read) => db.prepare(read.sql).bind(...(read.params ?? []))))) as
+      | Array<{ results?: unknown } | undefined>
+      | undefined;
+    return reads.map((_read, index) => {
+      const rows = results?.[index]?.results;
+      return Array.isArray(rows) ? (rows as Record<string, unknown>[]) : [];
+    });
+  }
+  const out: Record<string, unknown>[][] = [];
+  for (const read of reads) out.push(await allRows<Record<string, unknown>>(db, read.sql, ...(read.params ?? [])));
+  return out;
+}
+
+/** `?,?,?` for an `IN (...)` list of the given length. */
+export function placeholders(count: number): string {
+  return new Array(count).fill("?").join(",");
+}
+
 export async function count(db: SqlDb, sql: string, ...params: unknown[]): Promise<number> {
   const value = await scalar<number>(db, sql, ...params);
   return typeof value === "number" ? value : Number(value ?? 0);

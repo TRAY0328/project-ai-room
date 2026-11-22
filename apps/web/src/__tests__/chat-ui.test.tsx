@@ -159,3 +159,109 @@ describe("chat formatting", () => {
     expect(plainTextOf(message())).toBe("안녕하세요 **Gemini**입니다.");
   });
 });
+
+describe("older history", () => {
+  const page = (seqs: number[]) =>
+    seqs.map((seq) => message({ message_id: `msg-${seq}`, room_seq: seq, created_at: `2026-11-22T02:${String(seq).padStart(2, "0")}:00.000Z` }));
+
+  it("asks for the previous page from the top control", () => {
+    const onLoadOlder = vi.fn();
+    render(
+      <Providers>
+        <MessageList messages={page([11, 12])} handlers={{}} roomId="room-default" hasOlder onLoadOlder={onLoadOlder} />
+      </Providers>,
+    );
+    fireEvent.click(screen.getByText("이전 메시지 더 보기"));
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+  });
+
+  it("says it is loading instead of offering the control twice", () => {
+    render(
+      <Providers>
+        <MessageList messages={page([11, 12])} handlers={{}} roomId="room-default" hasOlder loadingOlder onLoadOlder={() => undefined} />
+      </Providers>,
+    );
+    expect(screen.getByText("이전 메시지를 불러오는 중…")).toBeTruthy();
+    expect(screen.queryByText("이전 메시지 더 보기")).toBeNull();
+  });
+
+  it("does not fetch history just because the list mounted at the top", () => {
+    const onLoadOlder = vi.fn();
+    const { container } = render(
+      <Providers>
+        <MessageList messages={page([11, 12])} handlers={{}} roomId="room-default" hasOlder onLoadOlder={onLoadOlder} />
+      </Providers>,
+    );
+    const scroller = container.querySelector(".air-chat-scroll") as HTMLDivElement;
+    // Before the first auto-scroll the container sits at 0; that is not the reader
+    // asking for older messages.
+    fireEvent.scroll(scroller, { target: { scrollTop: 0 } });
+    expect(onLoadOlder).not.toHaveBeenCalled();
+  });
+
+  it("fetches history when the reader scrolls up to the top", () => {
+    const onLoadOlder = vi.fn();
+    const { container } = render(
+      <Providers>
+        <MessageList messages={page([11, 12])} handlers={{}} roomId="room-default" hasOlder onLoadOlder={onLoadOlder} />
+      </Providers>,
+    );
+    const scroller = container.querySelector(".air-chat-scroll") as HTMLDivElement;
+    // jsdom has no layout: a scrollable height is declared so the list believes
+    // there is history above the viewport.
+    Object.defineProperty(scroller, "scrollHeight", { value: 2400, configurable: true });
+    Object.defineProperty(scroller, "clientHeight", { value: 600, configurable: true });
+    fireEvent.scroll(scroller, { target: { scrollTop: 420 } });
+    fireEvent.scroll(scroller, { target: { scrollTop: 20 } });
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+    // Staying at the top (or a settle of a few pixels) must not ask again.
+    fireEvent.scroll(scroller, { target: { scrollTop: 4 } });
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the reader's place when the previous page is added above", () => {
+    const onLoadOlder = vi.fn();
+    const first = page([11, 12]);
+    const { container, rerender } = render(
+      <Providers>
+        <MessageList messages={first} handlers={{}} roomId="room-default" hasOlder onLoadOlder={onLoadOlder} />
+      </Providers>,
+    );
+    const scroller = container.querySelector(".air-chat-scroll") as HTMLDivElement;
+    let height = 2400;
+    Object.defineProperty(scroller, "scrollHeight", { get: () => height, configurable: true });
+    Object.defineProperty(scroller, "clientHeight", { value: 600, configurable: true });
+    fireEvent.scroll(scroller, { target: { scrollTop: 300 } });
+    fireEvent.scroll(scroller, { target: { scrollTop: 0 } });
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+    // The screen answers with the rows that came before seq 11: the container is
+    // now 600px taller and the same message must stay under the reader's eyes.
+    height = 3000;
+    rerender(
+      <Providers>
+        <MessageList messages={[...page([7, 8, 9, 10]), ...first]} handlers={{}} roomId="room-default" hasOlder onLoadOlder={onLoadOlder} />
+      </Providers>,
+    );
+    expect(scroller.scrollTop).toBe(600);
+  });
+
+  it("hides the control once the first page of the room is on screen", () => {
+    render(
+      <Providers>
+        <MessageList messages={page([1, 2])} handlers={{}} roomId="room-default" hasOlder={false} onLoadOlder={() => undefined} />
+      </Providers>,
+    );
+    expect(screen.queryByText("이전 메시지 더 보기")).toBeNull();
+  });
+
+  it("offers a retry that the reader can press when the page failed", () => {
+    const onLoadOlder = vi.fn();
+    render(
+      <Providers>
+        <MessageList messages={page([11, 12])} handlers={{}} roomId="room-default" hasOlder olderError="NETWORK_UNREACHABLE: 오프라인" onLoadOlder={onLoadOlder} />
+      </Providers>,
+    );
+    fireEvent.click(screen.getByText("이전 메시지를 불러오지 못했습니다 — 다시 시도"));
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+  });
+});
