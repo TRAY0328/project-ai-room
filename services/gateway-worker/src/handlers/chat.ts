@@ -11,7 +11,7 @@
  *  - A delete writes a tombstone with the real actor, removes FTS rows through
  *    the trigger, fails pending receipts and expires download links.
  */
-import { ApiError, mintId } from "@ai-room/contracts";
+import { ApiError, mintId, toUtcIso } from "@ai-room/contracts";
 import { allRows, count, firstRow, scalar, sha256Hex, nowIso } from "@ai-room/auth";
 import { SearchService } from "@ai-room/search";
 import { recordProjectMetric } from "@ai-room/telemetry";
@@ -30,6 +30,7 @@ import {
   serializeMessage,
 } from "../domain.js";
 import { pageFromUrl } from "../http.js";
+import { publishPersistedMessage } from "../realtime.js";
 
 const ALLOWED_MIME = [
   "image/png",
@@ -429,12 +430,36 @@ export const chatHandlers: Record<string, Handler> = {
       });
     }
     const row = await getMessageForPrincipal(ctx.db, messageId, ctx.principal, ctx.requestId);
+    const wire = await serializeMessage(ctx.db, row);
+    const roomAclRevision = await aclRevision(ctx.db, room.room_id);
+    // D1 committed: the message is durable before any fan-out. The room DO sends
+    // this exact envelope to open sockets, so a live frame and an HTTPS cursor
+    // resync describe the same event; a broadcast failure never fails the write.
+    await publishPersistedMessage(ctx.env, ctx.auth, {
+      roomId: room.room_id,
+      projectId: link?.project_id ?? null,
+      subject,
+      aclRevision: roomAclRevision,
+      requestId: ctx.requestId,
+      event: {
+        schema_version: 1,
+        event_id: `evt_${messageId.slice(4)}`,
+        type: "room.message.created",
+        project_id: link?.project_id ?? null,
+        room_id: room.room_id,
+        sequence: seq,
+        correlation_id: messageId,
+        occurred_at: toUtcIso(Date.parse(now)),
+        payload: { message_id: messageId, seq, author_kind: authorKind, author_id: subject.id, revision: 1, message: wire },
+      },
+      row: { message_id: messageId, room_seq: seq, author_kind: authorKind, author_id: subject.id, revision: 1 },
+    });
     return {
       status: 201,
       data: {
-        message: await serializeMessage(ctx.db, row),
+        message: wire,
         delivery: { state: "QUEUED", note: "전달 성공과 저장 성공은 다릅니다. ACK 전에는 CONFIRMED가 아닙니다." },
-        room_ac_revision: await aclRevision(ctx.db, room.room_id),
+        room_ac_revision: roomAclRevision,
       },
     };
   },

@@ -76,6 +76,57 @@ describe("room stream", () => {
     expect(stream.statusSeq).toBe(3);
   });
 
+  it("reads the Room DO's EVENT envelope and keeps the cursor moving", () => {
+    FakeSocket.instances = [];
+    const received: string[] = [];
+    const stream = new RoomStream({
+      baseUrl: "https://gw.example",
+      roomId: "room-1",
+      onMessage: (m) => received.push(m.message_id),
+      onResync: () => undefined,
+      onStatus: () => undefined,
+      WebSocketImpl: FakeSocket as unknown as typeof WebSocket,
+    });
+    stream.connect(1);
+    const socket = FakeSocket.instances[0]!;
+    socket.onopen?.();
+    socket.emit({
+      type: "EVENT",
+      event: {
+        schema_version: 1,
+        event_id: "evt_2",
+        type: "room.message.created",
+        project_id: null,
+        room_id: "room-1",
+        sequence: 2,
+        correlation_id: "m-2",
+        occurred_at: new Date().toISOString(),
+        payload: { message_id: "m-2", seq: 2, message: message(2) },
+      },
+    });
+    expect(received).toEqual(["m-2"]);
+    expect(stream.statusSeq).toBe(2);
+  });
+
+  it("resyncs when the server calls for a snapshot", () => {
+    FakeSocket.instances = [];
+    const resync = vi.fn();
+    const stream = new RoomStream({
+      baseUrl: "https://gw.example",
+      roomId: "room-1",
+      onMessage: () => undefined,
+      onResync: resync,
+      onStatus: () => undefined,
+      WebSocketImpl: FakeSocket as unknown as typeof WebSocket,
+    });
+    stream.connect(0);
+    const socket = FakeSocket.instances[0]!;
+    socket.onopen?.();
+    socket.emit({ type: "SNAPSHOT_REQUIRED", reason: "no_cursor", latest_seq: 9 });
+    expect(resync).toHaveBeenCalledWith(expect.stringContaining("server requested resync"));
+    stream.close();
+  });
+
   it("resyncs on a sequence gap instead of guessing", () => {
     FakeSocket.instances = [];
     const resync = vi.fn();

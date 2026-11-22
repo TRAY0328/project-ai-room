@@ -1,8 +1,19 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiClient, newIdempotencyKey } from "../api/client.js";
 import type { MessageDto, OwnerSessionDto } from "../api/types.js";
+import type { WireMessage } from "../api/wire.js";
 
 export type ConnectionState = "unconfigured" | "checking" | "ready" | "unauthenticated" | "unreachable" | "degraded";
+
+/** What one flush actually did — the screen shows this instead of a guess. */
+export interface FlushResult {
+  sent: number;
+  failed: number;
+  /** Messages the server acknowledged, ready to render without a reload. */
+  accepted: WireMessage[];
+  lastError?: string;
+  busy?: boolean;
+}
 
 export interface OutboxItem {
   id: string;
@@ -36,7 +47,7 @@ interface AppContextValue {
   setDemoMode: (on: boolean) => void;
   outbox: OutboxItem[];
   enqueueMessage: (roomId: string, blocks: MessageDto["blocks"]) => OutboxItem;
-  flushOutbox: () => Promise<void>;
+  flushOutbox: () => Promise<FlushResult>;
   retryOutbox: (id: string) => Promise<void>;
   discardOutbox: (id: string) => void;
   lastFlush: { at: number; sent: number; failed: number } | null;
@@ -226,29 +237,33 @@ export function AppStateProvider({ children, initialGateway = null }: { children
     return item;
   }, []);
 
-  const flushOutbox = useCallback(async () => {
-    if (flushing.current) return;
-    if (!gatewayUrl) return;
+  const flushOutbox = useCallback(async (): Promise<FlushResult> => {
+    if (flushing.current) return { sent: 0, failed: 0, accepted: [], busy: true };
+    if (!gatewayUrl) return { sent: 0, failed: 0, accepted: [], lastError: "게이트웨이 URL이 없습니다" };
     flushing.current = true;
     let sent = 0;
     let failed = 0;
+    let lastError: string | undefined;
+    const accepted: WireMessage[] = [];
     try {
       const snapshot = outboxRef.current.filter((item) => item.state !== "sending");
       for (const item of snapshot) {
         setOutbox((prev) => prev.map((m) => (m.id === item.id ? { ...m, state: "sending", attempts: m.attempts + 1 } : m)));
-        const result = await client.request<{ message_id?: string }>("POST", `/v1/rooms/${encodeURIComponent(item.roomId)}/messages`, {
+        const result = await client.request<{ message?: WireMessage }>("POST", `/v1/rooms/${encodeURIComponent(item.roomId)}/messages`, {
           body: { blocks: item.blocks },
           idempotencyKey: item.idempotencyKey,
         });
         if (result.ok) {
           sent += 1;
+          if (result.data?.message) accepted.push(result.data.message);
           setOutbox((prev) => prev.filter((m) => m.id !== item.id));
         } else {
           failed += 1;
+          lastError = `${result.code}: ${result.message}`;
           setOutbox((prev) =>
             prev.map((m) =>
               m.id === item.id
-                ? { ...m, state: result.retryable ? "pending" : "failed", lastError: `${result.code}: ${result.message}` }
+                ? { ...m, state: result.retryable ? "pending" : "failed", lastError: lastError }
                 : m,
             ),
           );
@@ -259,6 +274,7 @@ export function AppStateProvider({ children, initialGateway = null }: { children
       flushing.current = false;
       setLastFlush({ at: Date.now(), sent, failed });
     }
+    return { sent, failed, accepted, ...(lastError === undefined ? {} : { lastError }) };
   }, [client, gatewayUrl, setOutbox]);
 
   // Auto-flush when the gateway comes back and there is queued work.

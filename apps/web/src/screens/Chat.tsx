@@ -33,6 +33,9 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
   const messagesRes = useResource<{ messages?: WireMessage[]; items?: WireMessage[] }>(client, roomId === "" ? null : `/v1/rooms/${encodeURIComponent(roomId)}/messages`, {
     enabled: Boolean(gatewayUrl) && !demoMode,
     query: { limit: 50 },
+    // Safety net, not the mechanism: the live socket is what makes a message
+    // appear at once. A missed frame still heals within this interval.
+    pollMs: 30000,
   });
 
   const agentList = demoMode ? demoAgents : agentsRes.state.kind === "ready" ? listOf<AgentSummary>(agentsRes.state.data) : [];
@@ -61,7 +64,9 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
     for (const message of realtimeMessages) {
       if (!merged.some((m) => m.message_id === message.message_id)) merged.push(message);
     }
-    return merged;
+    // The server serves a page newest-first; a chat reads oldest-first, and
+    // room_seq is the only ordering authority.
+    return merged.sort((a, b) => (a.room_seq ?? Number.MAX_SAFE_INTEGER) - (b.room_seq ?? Number.MAX_SAFE_INTEGER));
   }, [baseMessages, realtimeMessages]);
 
   // Realtime room stream: only when a gateway and a real room exist. Gaps trigger an HTTPS resync.
@@ -81,7 +86,9 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
       },
       onResync: (reason) => {
         messagesRes.reload();
-        setToast(`실시간 순서 공백 감지(${reason}) — 서버에서 다시 불러왔습니다`);
+        // A first subscribe has no cursor yet, so the server always asks for a
+        // snapshot. That is the normal path, not a warning the user must read.
+        if (!/no_cursor|snapshot/i.test(reason)) setToast(`실시간 순서 공백 감지(${reason}) — 서버에서 다시 불러왔습니다`);
       },
     });
     streamRef.current = stream;
@@ -112,15 +119,36 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
 
   const send = async (blocks: MessageDto["blocks"]) => {
     enqueueMessage(roomId, blocks);
-    if (connection.state === "ready") {
-      await flushOutbox();
-      // The queued copy leaves the list the moment the server accepts it, so the
-      // stored message is fetched again immediately — otherwise the message the
-      // user just sent disappears until the next poll.
-      messagesRes.reload();
-      setToast("전송 요청됨 — 서버 확인 결과는 메시지 상태로 표시됩니다");
-    } else {
+    if (connection.state !== "ready") {
       setToast("오프라인: 보관함에 저장했습니다 (서버 저장 아님)");
+      setReplyTo(null);
+      return;
+    }
+    const result = await flushOutbox();
+    if (result.accepted.length > 0) {
+      // The POST answer carries the stored message, so the screen shows it now —
+      // without waiting for the socket or a refetch. "전송 요청됨" without proof
+      // is exactly what left a stored message invisible.
+      setRealtimeMessages((prev) => {
+        const next = [...prev];
+        for (const wire of result.accepted) {
+          const normalized = normalizeWireMessage(wire, (id) => agentName(id));
+          if (!next.some((m) => m.message_id === normalized.message_id)) next.push(normalized);
+        }
+        return next;
+      });
+      messagesRes.reload();
+      setToast(
+        result.failed > 0
+          ? `${result.accepted.length}건 전송됨 · ${result.failed}건 실패 — ${result.lastError ?? "서버 응답 확인 필요"}`
+          : "전송됨 — 서버에 저장되었습니다",
+      );
+    } else if (result.failed > 0) {
+      setToast(`전송 실패 — ${result.lastError ?? "서버가 거부했습니다"}`);
+    } else if (result.busy) {
+      setToast("전송 중입니다 — 진행 중인 전송이 끝나면 결과가 표시됩니다");
+    } else {
+      setToast("전송 요청이 남아 있습니다 — 보관함에서 다시 시도하세요");
     }
     setReplyTo(null);
   };
@@ -220,7 +248,10 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
             <span className="air-hint">seq {messages.at(-1)?.room_seq ?? "—"}</span>
           </div>
 
-          {!demoMode && (messagesRes.state.kind === "idle" || messagesRes.state.kind === "unauthenticated" || messagesRes.state.kind === "unavailable" || messagesRes.state.kind === "error") ? (
+          {/* `idle` here is "no room yet", not "server missing": the first render
+              after login is a fetch in flight, and calling that 서버 미연결 made a
+              working room look broken. */}
+          {!demoMode && (messagesRes.state.kind === "unauthenticated" || messagesRes.state.kind === "unavailable" || messagesRes.state.kind === "error") ? (
             <div style={{ padding: 16 }}>
               <ResourceView state={messagesRes.state} onRetry={messagesRes.reload}>
                 {() => null}
@@ -228,15 +259,23 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
             </div>
           ) : null}
 
-          <MessageList
-            messages={messages.map((m) => ({
-              ...m,
-              reactions: { ...(m.reactions ?? {}), ...(reactions[m.message_id] ?? {}) },
-            }))}
-            pending={pendingHere.map((item) => ({ item }))}
-            handlers={handlers}
-            self={self}
-          />
+          {!demoMode && roomId === "" ? (
+            <div style={{ display: "grid", placeItems: "center", padding: 40 }}>
+              <span className="air-hint">방 정보를 불러오는 중입니다…</span>
+            </div>
+          ) : null}
+
+          {roomId === "" && !demoMode ? null : (
+            <MessageList
+              messages={messages.map((m) => ({
+                ...m,
+                reactions: { ...(m.reactions ?? {}), ...(reactions[m.message_id] ?? {}) },
+              }))}
+              pending={pendingHere.map((item) => ({ item }))}
+              handlers={handlers}
+              self={self}
+            />
+          )}
 
           <Composer
             roomId={roomId}

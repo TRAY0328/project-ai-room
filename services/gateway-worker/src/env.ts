@@ -58,9 +58,30 @@ export interface GitHubClient {
   }): Promise<{ commit_sha: string; blob_sha: string }>;
 }
 
+/**
+ * The narrow Durable Object surface the gateway needs to open a room socket and
+ * to publish a persisted message to it. Kept structural so tests can inject a
+ * fake namespace instead of a real one.
+ */
+export interface DurableObjectIdLike {
+  readonly name?: string;
+  toString(): string;
+}
+
+export interface DurableObjectStubLike {
+  fetch(request: Request): Promise<Response>;
+}
+
+export interface DurableObjectNamespaceLike {
+  idFromName(name: string): DurableObjectIdLike;
+  get(id: DurableObjectIdLike): DurableObjectStubLike;
+}
+
 export interface Env {
   readonly APP_ENV?: "dev" | "test" | "staging" | "production";
   readonly DB: SqlDb;
+  /** Room Durable Object namespace: the live socket fan-out authority (19.3). */
+  readonly ROOM_DO?: DurableObjectNamespaceLike;
   readonly R2?: R2BucketLike;
   readonly SESSION_SIGNING_KEY?: string;
   readonly WS_TICKET_SIGNING_KEY?: string;

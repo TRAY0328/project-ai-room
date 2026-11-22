@@ -36,6 +36,30 @@ export interface WireMessage {
   readonly tombstone_reason?: string | null;
 }
 
+/**
+ * The server's stored `status` is the only delivery evidence there is. Mapping it
+ * (instead of dropping it) is why a stored message no longer renders "전달 상태
+ * 미확인": PERSISTED/CONFIRMED are server-stored facts, and a rejected message
+ * says so instead of looking fine.
+ */
+function deliveryOf(raw: WireMessage): MessageDto["delivery"] {
+  switch (raw.status) {
+    case "PERSISTED":
+    case "CONFIRMED":
+      return "server_stored";
+    case "DRAFT":
+    case "VALIDATING":
+    case "ACCEPTED":
+    case "DISTRIBUTING":
+      return "queued";
+    case "REJECTED":
+    case "DEAD_LETTER":
+      return "failed";
+    default:
+      return undefined;
+  }
+}
+
 function reactionsOf(raw: WireMessage["reactions"]): Record<string, number> | undefined {
   if (raw === undefined) return undefined;
   if (Array.isArray(raw)) {
@@ -77,6 +101,7 @@ export function normalizeWireMessage(raw: WireMessage, nameOf: (agentId: string)
     edited_at: raw.edited_at ?? raw.updated_at ?? null,
     deleted_at: deleted,
     revision: raw.revision,
+    ...(deliveryOf(raw) === undefined ? {} : { delivery: deliveryOf(raw) }),
     ...(reactionsOf(raw.reactions) === undefined ? {} : { reactions: reactionsOf(raw.reactions) }),
     ...(raw.reply_to_id === undefined ? {} : { thread_root_id: raw.reply_to_id }),
   };

@@ -14,12 +14,13 @@
  *    facts that the frozen catalog cannot create but every flow needs. Each one
  *    is owner-only (or owner/assigned-agent) and audited.
  */
-import { ApiError, mintId, toUtcIso, type WireEvent } from "@ai-room/contracts";
+import { ApiError, mintId, toApiErrorResponse, toUtcIso, type WireEvent } from "@ai-room/contracts";
 import { allRows, count, firstRow, sha256Hex, type AuthService } from "@ai-room/auth";
 import { verifyDownloadGrant } from "@ai-room/auth";
 import { loadPrincipal, type Principal } from "@ai-room/permissions";
 import type { Env } from "./env.js";
-import { jsonResponse, successEnvelope } from "./http.js";
+import { readCookie, jsonResponse, successEnvelope, SESSION_COOKIE } from "./http.js";
+import { forwardRoomUpgrade } from "./realtime.js";
 import { aclRevision, blocked, ensureMainRoom, getMessageForPrincipal, getProject, getRoom, serializeMessage, setEmergencyStop } from "./domain.js";
 import { nowOf } from "./env.js";
 
@@ -109,7 +110,40 @@ route("POST", "/api/v1/rooms/{roomId}/ws-ticket", async (ctx, params) => {
   return ok(ctx, { ...ticket, note: "티켓은 60초 후 만료되며 한 방에만 유효합니다." }, 201);
 });
 
+/**
+ * A browser cannot set an `Authorization` header on a WebSocket, so the upgrade
+ * authenticates from the session cookie (or a bearer token for API clients),
+ * checks room membership, mints the room ticket and hands the socket to the
+ * Room Durable Object. This is the only path that makes the chat badge say
+ * "실시간 수신 중"; the HTTPS JSON answer below stays for cursor resync.
+ */
+async function openRoomSocket(ctx: ExtContext, roomId: string): Promise<Response> {
+  const fail = (code: "AUTH_REQUIRED" | "AUTH_EXPIRED" | "AUTH_REVOKED" | "ROOM_ACCESS_DENIED" | "EXTERNAL_DEPENDENCY_BLOCKED", status: number, details: Record<string, unknown> = {}): Response =>
+    jsonResponse(toApiErrorResponse(new ApiError({ code, requestId: ctx.requestId, details }), ctx.requestId), status, ctx.requestId);
+
+  const header = ctx.request.headers.get("authorization") ?? "";
+  let bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (bearer.length === 0) bearer = readCookie(ctx.request.headers.get("cookie"), SESSION_COOKIE) ?? "";
+  if (bearer.length === 0) return fail("AUTH_REQUIRED", 401);
+
+  let principal: Principal;
+  try {
+    const authenticated = await ctx.auth.authenticate(bearer, ctx.requestId);
+    principal = await loadPrincipal(ctx.env.DB, authenticated);
+  } catch (error) {
+    if (error instanceof ApiError) return fail(error.code === "AUTH_EXPIRED" ? "AUTH_EXPIRED" : "AUTH_REVOKED", error.httpStatus);
+    throw error;
+  }
+  if (ctx.env.ROOM_DO === undefined) return fail("EXTERNAL_DEPENDENCY_BLOCKED", 503, { reason: "ROOM_DO_NOT_BOUND" });
+
+  const room = await getRoom(ctx.env.DB, roomId, principal, ctx.requestId);
+  const upgraded = await forwardRoomUpgrade(ctx.env, { roomId: room.room_id, request: ctx.request });
+  return upgraded ?? fail("EXTERNAL_DEPENDENCY_BLOCKED", 503, { reason: "ROOM_DO_NOT_BOUND" });
+}
+
 route("GET", "/api/v1/rooms/{roomId}/events", async (ctx, params) => {
+  const upgrade = (ctx.request.headers.get("upgrade") ?? "").toLowerCase();
+  if (upgrade === "websocket") return openRoomSocket(ctx, params["roomId"] ?? "");
   const principal = await principalOf(ctx);
   const room = await getRoom(ctx.env.DB, params["roomId"] ?? "", principal, ctx.requestId);
   const cursor = Number.parseInt(ctx.url.searchParams.get("cursor") ?? "0", 10);

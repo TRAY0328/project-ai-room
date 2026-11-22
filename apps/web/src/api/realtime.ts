@@ -26,8 +26,18 @@ interface ServerEvent {
   type?: string;
   schema_version?: number;
   room_seq?: number;
+  sequence?: number;
   message?: MessageDto;
-  payload?: { message?: MessageDto };
+  payload?: { message?: MessageDto; [key: string]: unknown };
+  /** The Room DO wraps an event as `{ type: "EVENT", event: WireEvent }`. */
+  event?: {
+    type?: string;
+    schema_version?: number;
+    sequence?: number;
+    room_seq?: number;
+    payload?: { message?: MessageDto; [key: string]: unknown };
+  };
+  reason?: string;
 }
 
 export class RoomStream {
@@ -36,6 +46,7 @@ export class RoomStream {
   private retries = 0;
   private lastSeq: number | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
   private readonly options: RoomStreamOptions;
   private readonly WS: typeof WebSocket;
 
@@ -69,6 +80,17 @@ export class RoomStream {
     socket.onopen = () => {
       this.retries = 0;
       this.options.onStatus("live");
+      // Presence is kept alive by a real frame: the DO drops a socket that has
+      // been silent past its heartbeat window, and an idle reader is not dead.
+      this.stopPing();
+      this.pingTimer = setInterval(() => {
+        if (socket.readyState !== 1) return;
+        try {
+          socket.send(JSON.stringify({ type: "PING", sent_at: new Date().toISOString() }));
+        } catch {
+          /* the close handler will reconnect */
+        }
+      }, 20_000);
     };
 
     socket.onmessage = (event: MessageEvent) => {
@@ -78,13 +100,25 @@ export class RoomStream {
       } catch {
         return; // garbage frames are ignored, never rendered
       }
-      if (parsed.schema_version !== undefined && parsed.schema_version > 1) {
-        this.options.onResync(`unknown schema_version ${parsed.schema_version}`);
+      // Two shapes reach the client: the bare event the contract tests use
+      // (`{type:"room.message.created", message}`) and the clamped frame the Room
+      // DO sends (`{type:"EVENT", event:{…}}`). Both are read here once.
+      const envelope = parsed.event ?? parsed;
+      if (envelope.schema_version !== undefined && envelope.schema_version > 1) {
+        this.options.onResync(`unknown schema_version ${envelope.schema_version}`);
         return;
       }
-      const type = parsed.type ?? "";
-      const message = parsed.message ?? parsed.payload?.message;
-      const seq = parsed.room_seq ?? message?.room_seq ?? null;
+      const type = envelope.type ?? "";
+      const message = parsed.message ?? envelope.payload?.message;
+      const seq = envelope.sequence ?? parsed.room_seq ?? envelope.room_seq ?? message?.room_seq ?? null;
+      if (parsed.type === "SNAPSHOT_REQUIRED") {
+        this.options.onResync(`server requested resync (${parsed.reason ?? "snapshot"})`);
+        return;
+      }
+      if (parsed.type === "CLOSE") {
+        this.options.onStatus("error", `서버가 연결을 닫았습니다(${parsed.reason ?? "closed"})`);
+        return;
+      }
 
       if (seq !== null && this.lastSeq !== null && seq > this.lastSeq + 1) {
         this.options.onResync(`gap: ${this.lastSeq} → ${seq}`);
@@ -106,6 +140,7 @@ export class RoomStream {
 
     socket.onclose = (event: CloseEvent) => {
       this.ws = null;
+      this.stopPing();
       if (this.closedByUser) {
         this.options.onStatus("closed");
         return;
@@ -129,8 +164,14 @@ export class RoomStream {
     };
   }
 
+  private stopPing(): void {
+    if (this.pingTimer) clearInterval(this.pingTimer);
+    this.pingTimer = null;
+  }
+
   close(): void {
     this.closedByUser = true;
+    this.stopPing();
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     this.ws?.close(1000, "client closed");
