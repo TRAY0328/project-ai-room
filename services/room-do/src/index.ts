@@ -33,7 +33,7 @@ export interface SocketLike {
   send(data: string): void;
   close(code: number, reason: string): void;
   /** Present on a Cloudflare WebSocket; tests may omit it. */
-  addEventListener?(type: "message", listener: (event: { data: unknown }) => void): void;
+  addEventListener?(type: "message" | "close", listener: (event: { data?: unknown }) => void): void;
 }
 
 export interface RoomMessageRow {
@@ -241,6 +241,7 @@ export class RoomLiveSession extends RoomCoordinator {
     this.records.set(socketId, record);
     this.state.sockets.add(socket);
     socket.addEventListener?.("message", (event) => this.onClientFrame(socketId, String(event.data)));
+    socket.addEventListener?.("close", () => this.drop(socketId));
     const hello = this.handleHello(claims, lastSeenSeq);
     record.lastSeenSeq = hello.type === "HELLO_OK" ? (hello.resumed_from_seq ?? lastSeenSeq ?? 0) : (lastSeenSeq ?? 0);
     socket.send(JSON.stringify(hello));
@@ -270,6 +271,8 @@ export class RoomLiveSession extends RoomCoordinator {
       try {
         record.socket.send(JSON.stringify(frame));
         record.lastSeenSeq = Math.max(record.lastSeenSeq, seq);
+        // A frame we just delivered proves the socket is alive.
+        record.lastHeartbeatMs = Date.now();
         delivered += 1;
       } catch {
         // A dead socket is swept by the heartbeat alarm; one failure must not
@@ -292,6 +295,14 @@ export class RoomLiveSession extends RoomCoordinator {
     }
     const hello = this.attach(verification.ticket, socket, socketId, nowMs);
     return { ok: true, frame: hello };
+  }
+
+  /** A socket that closed is gone from presence now, not at the next sweep. */
+  drop(socketId: string): void {
+    const record = this.records.get(socketId);
+    if (record === undefined) return;
+    this.records.delete(socketId);
+    this.state.sockets.delete(record.socket);
   }
 
   /**
