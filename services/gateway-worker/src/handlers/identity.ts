@@ -173,8 +173,19 @@ export const identityHandlers: Record<string, Handler> = {
     // the deployment serves this file itself, so nobody has to host an image
     // before they can join. An explicit URL or uploaded asset always wins.
     const avatarUrl = explicitAvatarUrl ?? (avatarAssetId === undefined ? defaultAvatarUrl(ctx.url) : undefined);
+    // A name pasted with a trailing space or newline is the name itself, so it is
+    // trimmed here; a name that is nothing but whitespace is not a name.
+    const displayName = String(ctx.body["display_name"]).trim();
+    if (displayName.length === 0) {
+      throw new ApiError({
+        code: "VALIDATION_FAILED",
+        requestId: ctx.requestId,
+        message: "display_name이 비어 있습니다 — AI 표시 이름을 보내세요.",
+        details: { field: "display_name" },
+      });
+    }
     const result = await ctx.auth.registerAgent({
-      display_name: String(ctx.body["display_name"]),
+      display_name: displayName,
       ...(avatarAssetId === undefined ? {} : { avatar_asset_id: avatarAssetId }),
       ...(avatarUrl === undefined ? {} : { avatar_url: avatarUrl }),
       claimed_provider: optionalString(ctx.body, "provider_claim") ?? optionalString(ctx.body, "claimed_provider"),

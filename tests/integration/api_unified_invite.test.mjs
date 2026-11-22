@@ -163,3 +163,105 @@ test("the documented message body works with the idempotency key only in the hea
     close();
   }
 });
+
+test("the unified invite code survives a padded, line-wrapped paste", async () => {
+  const { call, close } = await setup();
+  try {
+    // A code that travelled through a chat message: spaces around it, a line break
+    // inside it, and quotes from the message around it. An AI that pasted the right
+    // code must not be refused for how the message wrapped it.
+    const asChatMessage = `  "${INVITE_SECRET.slice(0, 12)}\n${INVITE_SECRET.slice(12)}"\n`;
+    const registered = await call("POST", "/api/v1/agents/register", {
+      idempotencyKey: "register-padded-code",
+      body: { invite_secret: asChatMessage, display_name: "  Wrapped AI  " },
+    });
+    assert.equal(registered.status, 201, registered.text);
+    assert.equal(registered.json.data.agent.display_name, "Wrapped AI", "the name is trimmed");
+    assert.match(registered.json.data.credential.agent_key, /^airo_sk_/);
+  } finally {
+    close();
+  }
+});
+
+test("the unified invite code keeps working when every DB invite is used or revoked", async () => {
+  const { call, close, env } = await setup();
+  try {
+    const before = await call("POST", "/api/v1/agents/register", {
+      idempotencyKey: "register-unified-before",
+      body: { invite_secret: INVITE_SECRET, display_name: "Before AI" },
+    });
+    assert.equal(before.status, 201, before.text);
+
+    // Every one-time row is spent and revoked: the master code is checked before
+    // the DB and is unlimited by design, so joining must still work.
+    await env.DB.prepare("UPDATE agent_invites SET used_at = ?, used_by_agent_id = ?, revoked_at = ?")
+      .bind("2026-11-21T03:00:00.000Z", before.json.data.agent.agent_id, "2026-11-21T03:00:00.000Z")
+      .run();
+
+    const after = await call("POST", "/v1/agents/register", {
+      idempotencyKey: "register-unified-after",
+      body: { invite_secret: INVITE_SECRET, display_name: "After AI" },
+    });
+    assert.equal(after.status, 201, after.text);
+
+    // A DB-only one-time code is refused once it is spent — the master rule does
+    // not widen any other invite.
+    const oneTime = "inv_one_time_code_for_this_test_0001";
+    const sha = await (await import("node:crypto")).createHash("sha256").update(oneTime).digest("hex");
+    const ownerId = (await env.DB.prepare("SELECT owner_id FROM owners LIMIT 1").all()).results[0].owner_id;
+    await env.DB.prepare("INSERT INTO agent_invites (invite_id, secret_hash, created_by, created_at, expires_at) VALUES (?,?,?,?,?)")
+      .bind("inst_TESTONETIME0001", sha, ownerId, "2026-11-21T03:00:00.000Z", "2026-11-22T03:00:00.000Z")
+      .run();
+    const spent = await call("POST", "/api/v1/agents/register", {
+      idempotencyKey: "register-one-time",
+      body: { invite_secret: oneTime, display_name: "One Time AI" },
+    });
+    assert.equal(spent.status, 201, spent.text);
+    const again = await call("POST", "/api/v1/agents/register", {
+      idempotencyKey: "register-one-time-again",
+      body: { invite_secret: oneTime, display_name: "One Time AI 2" },
+    });
+    assert.equal(again.status, 403);
+    assert.equal(again.json.error.code, "INVITE_INVALID");
+  } finally {
+    close();
+  }
+});
+
+test("a refused invite says what to check instead of only 'invalid'", async () => {
+  const { call, close } = await setup();
+  try {
+    const refused = await call("POST", "/api/v1/agents/register", {
+      idempotencyKey: "register-wrong-code",
+      body: { invite_secret: "inv_this_code_was_never_issued_0001", display_name: "Lost AI" },
+    });
+    assert.equal(refused.status, 403);
+    assert.equal(refused.json.error.code, "INVITE_INVALID");
+    assert.match(refused.json.error.message, /초대 코드/);
+    assert.equal(refused.json.error.details.whitespace_ignored, true);
+    assert.deepEqual(refused.json.error.details.checked, ["deployment_master_secret", "db_invite"]);
+  } finally {
+    close();
+  }
+});
+
+test("a cross-origin caller gets a preflight answer, so an app-hosted AI can join", async () => {
+  const { call, close } = await setup();
+  try {
+    const preflight = await call("OPTIONS", "/api/v1/agents/register", {
+      headers: { origin: "https://host-app.example", "access-control-request-method": "POST" },
+    });
+    assert.equal(preflight.status, 204, preflight.text);
+    assert.equal(preflight.headers.get("access-control-allow-origin"), "*");
+    assert.match(preflight.headers.get("access-control-allow-headers") ?? "", /idempotency-key/);
+
+    const registered = await call("POST", "/v1/agents/register", {
+      idempotencyKey: "register-cross-origin",
+      body: { invite_secret: INVITE_SECRET, display_name: "Hosted AI" },
+    });
+    assert.equal(registered.status, 201, registered.text);
+    assert.equal(registered.headers.get("access-control-allow-origin"), "*");
+  } finally {
+    close();
+  }
+});

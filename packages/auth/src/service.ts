@@ -53,6 +53,20 @@ import {
 } from "./tokens.js";
 import { consumeRateLimit, enforceFailureBudget, enforceRateLimit, recordFailure } from "./rate-limit.js";
 
+/**
+ * A code that travelled through a chat message arrives padded, quoted, or split
+ * across a line break. An opaque invite token never means to carry whitespace or
+ * quoting, so they are removed before the comparison: an AI that pasted the
+ * right code is never refused for how the message wrapped it.
+ */
+export function normalizeInviteSecret(secret: string): string {
+  return secret
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s+/g, "")
+    .replace(/^["'`]+/, "")
+    .replace(/["'`]+$/, "");
+}
+
 export interface AuthEnv {
   readonly SESSION_SIGNING_KEY?: string;
   readonly WS_TICKET_SIGNING_KEY?: string;
@@ -473,6 +487,11 @@ export class AuthService {
   /**
    * Validates an invite secret against (a) the deployment master secret and
    * (b) unused, unexpired DB invites. Constant-time; wrong guesses cost budget.
+   *
+   * The deployment master secret (`AGENT_INVITE_SECRET`) is the *unified* code:
+   * it is unlimited by design and is checked before any DB row, so consuming or
+   * revoking a `agent_invites` row can never disable it. A DB invite is only a
+   * second, one-time path.
    */
   async verifyInvite(input: {
     readonly secret: string;
@@ -490,11 +509,12 @@ export class AuthService {
     };
     // Only failures spend the budget: a wrong guess is the abuse signal.
     await enforceFailureBudget(this.db, policy, input.request_id);
-    const master = this.env.AGENT_INVITE_SECRET;
-    if (master !== undefined && master.length >= 16 && timingSafeEqualString(input.secret, master)) {
+    const presented = normalizeInviteSecret(input.secret);
+    const master = this.env.AGENT_INVITE_SECRET === undefined ? undefined : normalizeInviteSecret(this.env.AGENT_INVITE_SECRET);
+    if (master !== undefined && master.length >= 16 && timingSafeEqualString(presented, master)) {
       return { invite_id: null, max_uses: Number.POSITIVE_INFINITY };
     }
-    const hash = await sha256Hex(input.secret);
+    const hash = await sha256Hex(presented);
     const invite = await firstRow<{ invite_id: string; used_at: string | null; revoked_at: string | null; expires_at: string }>(
       this.db,
       "SELECT invite_id, used_at, revoked_at, expires_at FROM agent_invites WHERE secret_hash = ?",
@@ -503,10 +523,25 @@ export class AuthService {
     if (invite === null || invite.used_at !== null || invite.revoked_at !== null) {
       await recordFailure(this.db, policy);
       await this.recordSecurityEvent("invite_abuse", "medium", "system", "anonymous", "invite", "unknown", "invalid invite secret");
-      throw new ApiError({ code: "INVITE_INVALID", requestId: input.request_id });
+      throw new ApiError({
+        code: "INVITE_INVALID",
+        requestId: input.request_id,
+        message:
+          "이 배포에 등록된 초대 코드와 일치하지 않습니다. 통합 초대코드는 여러 AI가 함께 쓸 수 있고 소모되지 않으며, 코드 앞뒤 공백·줄바꿈은 무시됩니다.",
+        details: {
+          hint: "코드를 다시 한 번 붙여넣어 주세요. 계속 거절되면 소유자에게 이 배포의 통합 초대코드(AGENT_INVITE_SECRET)인지 확인하세요.",
+          whitespace_ignored: true,
+          checked: ["deployment_master_secret", "db_invite"],
+        },
+      });
     }
     if (Date.parse(invite.expires_at) <= Date.now()) {
-      throw new ApiError({ code: "INVITE_INVALID", requestId: input.request_id, details: { reason: "expired" } });
+      throw new ApiError({
+        code: "INVITE_INVALID",
+        requestId: input.request_id,
+        message: "초대 코드가 만료되었습니다. 소유자에게 새 코드를 받으세요.",
+        details: { reason: "expired" },
+      });
     }
     return { invite_id: invite.invite_id, max_uses: 1 };
   }

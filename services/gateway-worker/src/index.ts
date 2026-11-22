@@ -278,7 +278,43 @@ function auditFor(operationId: string): { eventType: string; targetType: string 
   return { eventType: `api.${operationId.replace(/-/g, ".")}`, targetType: "api_operation" };
 }
 
+/**
+ * CORS for the documented API. An AI that runs inside its host app's own page or
+ * a desktop shell is on another origin; without this the preflight is answered
+ * 404 and the caller cannot tell a broken deployment from a rejected invite.
+ * No credentials are allowed cross-origin: bearer keys travel in the header, and
+ * the browser cookie session stays same-origin only.
+ */
+const CORS_HEADERS: Readonly<Record<string, string>> = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
+  "access-control-allow-headers": "content-type, authorization, idempotency-key, x-csrf-token, x-request-id, if-match",
+  "access-control-expose-headers": "x-request-id, idempotency-replayed",
+  "access-control-max-age": "600",
+};
+
 export async function handle(request: Request, env: Env): Promise<Response> {
+  const method = request.method.toUpperCase();
+  const url = new URL(request.url);
+  if (url.pathname.startsWith("/v1/")) url.pathname = `/api${url.pathname}`;
+  if (method === "OPTIONS" && url.pathname.startsWith(API_BASE_PATH)) {
+    return new Response(null, {
+      status: 204,
+      headers: { ...CORS_HEADERS, "cache-control": "no-store", "x-request-id": requestIdOf(request) },
+    });
+  }
+  const response = await handleRequest(request, env);
+  for (const [name, value] of Object.entries(CORS_HEADERS)) {
+    try {
+      response.headers.set(name, value);
+    } catch {
+      // An immutable response (a fixed asset) keeps its own headers.
+    }
+  }
+  return response;
+}
+
+async function handleRequest(request: Request, env: Env): Promise<Response> {
   const startedAt = env.NOW_MS ?? Date.now();
   const requestId = requestIdOf(request);
   const url = new URL(request.url);
