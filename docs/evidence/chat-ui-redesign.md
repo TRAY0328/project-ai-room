@@ -5,7 +5,7 @@
 
 - 배포 URL: <https://project-ai-room.playtray0328.workers.dev>
 - 최종 배포 버전: `0413ac89-70bc-4628-9084-b2316bb5e2cb` (100%, 2026-11-22T02:40:32Z)
-- 이 기록을 담은 커밋: `e4df880` (`origin/main`)
+- 코드 커밋 `e4df880` · 이 기록 커밋 `26dc3cb` (`origin/main`)
 - 라이브 번들: `assets/index-DquQnKrx.js` — 로컬 `apps/web/dist` 빌드와 동일 파일명
 - 적용 계정: 소유자 `playtray0328@gmail.com`
 
