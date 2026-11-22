@@ -2183,6 +2183,179 @@
 .air-thread-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--k-line); }
 .air-thread-body { overflow-y: auto; padding: 10px; display: grid; gap: 8px; align-content: start; min-height: 0; }
 
+/* ================================================================ SPLASH ===
+   The room's real loading screen: dark navy, a pulsing yellow emblem, a bar
+   that only moves when the actual work (session, rooms, messages, socket)
+   settles, and a slide-up exit that hands the room over. Motion is transform
+   and opacity only.
+   ------------------------------------------------------------------------- */
+
+.air-splash {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 18px;
+  padding: 24px;
+  background:
+    radial-gradient(120% 90% at 50% -10%, #2a3a52 0%, transparent 55%),
+    radial-gradient(90% 70% at 80% 110%, rgba(254, 229, 0, 0.12) 0%, transparent 60%),
+    linear-gradient(180deg, #1b2637 0%, #131b28 55%, #0e141d 100%);
+  color: #eef3f8;
+  overflow: hidden;
+  animation: k-splash-in 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: transform 680ms cubic-bezier(0.22, 1, 0.36, 1), opacity 560ms ease;
+  will-change: transform, opacity;
+}
+.air-splash[data-state="exit"] {
+  transform: translate3d(0, -100%, 0) scale(1.03);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.air-splash-stars span {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+  animation: k-star 2.8s ease-in-out infinite;
+}
+.air-splash-stars span:nth-child(1) { top: 16%; left: 18%; animation-delay: 0s; }
+.air-splash-stars span:nth-child(2) { top: 24%; left: 78%; animation-delay: 0.5s; }
+.air-splash-stars span:nth-child(3) { top: 62%; left: 12%; animation-delay: 1.1s; }
+.air-splash-stars span:nth-child(4) { top: 70%; left: 86%; animation-delay: 1.6s; }
+.air-splash-stars span:nth-child(5) { top: 40%; left: 92%; animation-delay: 2.1s; width: 2px; height: 2px; }
+.air-splash-stars span:nth-child(6) { top: 82%; left: 34%; animation-delay: 0.8s; width: 2px; height: 2px; }
+
+.air-splash-card {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(340px, 88vw);
+  padding: 26px 26px 20px;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 40px 90px -50px rgba(0, 0, 0, 0.9);
+  animation: k-splash-card-in 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.air-splash-emblem { position: relative; width: 76px; height: 76px; display: grid; place-items: center; }
+.air-splash-emblem-face {
+  position: relative;
+  z-index: 2;
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  border-radius: 21px;
+  background: #fee500;
+  color: #191600;
+  box-shadow: 0 14px 34px -14px rgba(254, 229, 0, 0.75);
+  animation: k-emblem 2.4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+.air-splash-emblem-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 1.5px solid rgba(254, 229, 0, 0.55);
+  animation: k-ring 2.4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+.air-splash-emblem-ring-delay { animation-delay: 1.2s; }
+
+.air-splash-brand { font-size: 21px; font-weight: 800; letter-spacing: 0.14em; }
+.air-splash-sub { font-size: 10.5px; letter-spacing: 0.18em; color: rgba(238, 243, 248, 0.55); text-transform: uppercase; }
+
+.air-splash-bar {
+  width: 100%;
+  height: 7px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.air-splash-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #fee500 0%, #ffe96b 55%, #fff3a6 100%);
+  box-shadow: 0 0 14px rgba(254, 229, 0, 0.65);
+  transition: width 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.air-splash-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 22px;
+}
+.air-splash-percent {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+  min-width: 58px;
+  color: #fee500;
+  text-shadow: 0 0 18px rgba(254, 229, 0, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+.air-splash-percent-value { font-size: 21px; font-weight: 800; letter-spacing: -0.02em; }
+.air-splash-percent-unit { font-size: 11px; font-weight: 700; opacity: 0.85; }
+.air-splash-percent[data-done] { color: #b6f3cd; text-shadow: 0 0 18px rgba(120, 230, 160, 0.5); }
+
+.air-splash-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11.5px;
+  color: rgba(238, 243, 248, 0.78);
+  animation: k-step-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.air-splash-step-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.09);
+  color: #fee500;
+}
+
+.air-splash-foot { font-size: 10px; letter-spacing: 0.12em; color: rgba(238, 243, 248, 0.4); }
+
+@keyframes k-splash-in {
+  from { opacity: 0; transform: scale(1.015); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes k-splash-card-in {
+  from { opacity: 0; transform: translate3d(0, 18px, 0) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes k-emblem {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.07); }
+}
+@keyframes k-ring {
+  0% { transform: scale(0.72); opacity: 0.9; }
+  70% { transform: scale(1.25); opacity: 0; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+@keyframes k-step-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes k-star {
+  0%, 100% { opacity: 0.2; transform: scale(0.8); }
+  50% { opacity: 0.9; transform: scale(1.25); }
+}
+
 /* ================================================================ SHEETS ===
    One layer for every in-room panel: a bottom sheet, a right drawer, an action
    list. Each keeps the room behind it and leaves the same way it came in.
@@ -2729,7 +2902,10 @@
   .air-scrim,
   .air-scrim > .air-dialog,
   .air-thread,
-  .air-msg-slot[data-flash="true"] {
+  .air-msg-slot[data-flash="true"],
+  .air-splash,
+  .air-splash-card,
+  .air-splash-step {
     animation: none !important;
     transition-duration: 1ms !important;
   }

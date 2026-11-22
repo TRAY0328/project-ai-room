@@ -10,6 +10,7 @@ import { normalizeWireMessage, type WireMessage } from "../api/wire.js";
 import { readCachedMessages, readCachedRooms, readLastRoomId, rememberLastRoomId, writeCachedMessages, writeCachedRooms } from "../api/chat-cache.js";
 import { Composer, EditHistoryDialog, MessageList, ThreadPanel, insertIntoComposer, type ComposerSendMeta, type MessageActionHandlers } from "../components/chat/index.js";
 import { ChatActionSheet, ChatSheet, SheetRow, type ChatAction } from "../components/chat/sheets.js";
+import { SplashScreen, splashProgress, splashStageIndex, splashTarget, useSplash } from "../components/chat/splash.js";
 import { AiJoinScreen, SignInScreen } from "./Start.js";
 import { DemoChip, DemoNote, EmptyHint, ResourceView, ScreenHeader, Section } from "../components/ui.js";
 import { openAppNav } from "../lib/shell-nav.js";
@@ -17,6 +18,14 @@ import { chatTime, excerptOf, initialsOf } from "../lib/chat-format.js";
 import type { ScreenId } from "../lib/router.js";
 
 type Navigate = (id: ScreenId, params?: Record<string, string>) => void;
+
+/**
+ * The splash belongs to the page load, not to the screen: one full entry into
+ * the room shows it, and coming back from another in-app screen does not.
+ * `let` at module scope is the whole state — a reload resets it by definition.
+ */
+let splashShownThisLoad = false;
+const SPLASH_MIN_VISIBLE_MS = 1100;
 
 /** The gateway spells a room as `room_type` + `latest_seq`; a screen reads `kind` + a last activity. */
 function normalizeRoom(raw: RoomSummary): RoomSummary {
@@ -156,6 +165,27 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
   const [deleteTarget, setDeleteTarget] = useState<MessageDto | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [gatewayInput, setGatewayInput] = useState(gatewayUrl ?? "");
+  /* The real loading screen: it watches the gateway probe, the room list, the
+     first message page and the realtime channel, and only then lets go. */
+  const [splash, setSplash] = useState(() => !splashShownThisLoad);
+  useEffect(() => {
+    if (splash) splashShownThisLoad = true;
+  }, [splash]);
+  const splashProgressState = useMemo(
+    () =>
+      splashProgress({
+        demoMode,
+        connectionState: connection.state,
+        roomsState: rooms.state.kind,
+        messagesState: messagesRes.state.kind,
+        streamState: live.status,
+      }),
+    [splash, demoMode, connection.state, rooms.state.kind, messagesRes.state.kind, live.status],
+  );
+  const splashTargetPercent = splashTarget(splashProgressState);
+  const splashStage = splashStageIndex(splashProgressState);
+  const splashFinish = useCallback(() => setSplash(false), []);
+  const { percent: splashPercent, exiting: splashExiting } = useSplash(splashTargetPercent, splashProgressState.finished, splashFinish, SPLASH_MIN_VISIBLE_MS);
 
   const messages: MessageDto[] = useMemo(() => {
     const merged = [...baseMessages];
@@ -616,6 +646,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
 
   return (
     <div className="air-chat-screen">
+      {splash ? <SplashScreen percent={splashPercent} stageIndex={splashStage} exiting={splashExiting} /> : null}
       <div className="air-chat-frame">
         <header className="air-chat-head">
           <button type="button" className="air-chat-head-btn" onClick={() => setRoomsOpen(true)} aria-label="방 목록" title="방 목록" data-testid="chat-room-list">
