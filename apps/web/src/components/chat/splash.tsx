@@ -110,7 +110,9 @@ export function useSplash(
       if (stopped) return;
       setDisplayed((prev) => {
         const goal = targetRef.current;
-        const next = prev + (goal - prev) * 0.16;
+        // Once every step has answered the number closes briskly — a bar at 60%
+        // under a "준비 완료" label would read as a lie.
+        const next = prev + (goal - prev) * (finishedRef.current ? 0.45 : 0.16);
         return goal - next < 0.4 ? goal : next;
       });
       raf = requestAnimationFrame(tick);
