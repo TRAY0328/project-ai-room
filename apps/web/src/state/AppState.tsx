@@ -27,6 +27,10 @@ export interface OutboxItem {
   lastError?: string;
   /** Set only after the server acknowledged the write. */
   serverMessageId?: string;
+  /** Set when the message answers another one (the server stores reply_to_id). */
+  replyToId?: string | null;
+  /** Agents named with @ in the message body; the server validates membership. */
+  mentionedAgentIds?: string[];
 }
 
 interface AppContextValue {
@@ -54,7 +58,7 @@ interface AppContextValue {
   demoMode: boolean;
   setDemoMode: (on: boolean) => void;
   outbox: OutboxItem[];
-  enqueueMessage: (roomId: string, blocks: MessageDto["blocks"]) => OutboxItem;
+  enqueueMessage: (roomId: string, blocks: MessageDto["blocks"], meta?: { replyToId?: string | null; mentionedAgentIds?: string[] }) => OutboxItem;
   flushOutbox: () => Promise<FlushResult>;
   retryOutbox: (id: string) => Promise<void>;
   discardOutbox: (id: string) => void;
@@ -293,7 +297,7 @@ export function AppStateProvider({ children, initialGateway = null }: { children
     writeStorage(OUTBOX_KEY, JSON.stringify(outbox));
   }, [outbox]);
 
-  const enqueueMessage = useCallback((roomId: string, blocks: MessageDto["blocks"]): OutboxItem => {
+  const enqueueMessage = useCallback((roomId: string, blocks: MessageDto["blocks"], meta?: { replyToId?: string | null; mentionedAgentIds?: string[] }): OutboxItem => {
     const item: OutboxItem = {
       id: `out-${newIdempotencyKey("m").slice(6, 18)}`,
       idempotencyKey: newIdempotencyKey("msg"),
@@ -302,6 +306,8 @@ export function AppStateProvider({ children, initialGateway = null }: { children
       createdAt: new Date().toISOString(),
       state: "pending",
       attempts: 0,
+      ...(meta?.replyToId ? { replyToId: meta.replyToId } : {}),
+      ...(meta?.mentionedAgentIds && meta.mentionedAgentIds.length > 0 ? { mentionedAgentIds: meta.mentionedAgentIds } : {}),
     };
     setOutbox((prev) => [...prev, item]);
     return item;
@@ -320,7 +326,11 @@ export function AppStateProvider({ children, initialGateway = null }: { children
       for (const item of snapshot) {
         setOutbox((prev) => prev.map((m) => (m.id === item.id ? { ...m, state: "sending", attempts: m.attempts + 1 } : m)));
         const result = await client.request<{ message?: WireMessage }>("POST", `/v1/rooms/${encodeURIComponent(item.roomId)}/messages`, {
-          body: { blocks: item.blocks },
+          body: {
+            blocks: item.blocks,
+            ...(item.replyToId ? { reply_to_id: item.replyToId } : {}),
+            ...(item.mentionedAgentIds && item.mentionedAgentIds.length > 0 ? { mentioned_agent_ids: item.mentionedAgentIds } : {}),
+          },
           idempotencyKey: item.idempotencyKey,
         });
         if (result.ok) {

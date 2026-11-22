@@ -12,6 +12,7 @@ import {
 } from "@ai-room/design-system";
 import { useApp } from "../state/AppState.js";
 import { NAV_GROUPS, SCREENS, type ScreenId, type ScreenMeta } from "../lib/router.js";
+import { OPEN_APP_NAV_EVENT } from "../lib/shell-nav.js";
 
 export interface ShellProps {
   screen: ScreenMeta;
@@ -28,6 +29,18 @@ export function Shell({ screen, params, navigate, notifications, children }: She
   const [navOpen, setNavOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const isMobile = breakpoint === "xs" || breakpoint === "sm" || breakpoint === "md";
+  /**
+   * A chat owns the whole window: no permanent sidebar and no second top bar.
+   * The navigation is reached from the chat header's menu button, which asks the
+   * shell to open this drawer (works at every width, not only on a phone).
+   */
+  const chatFocus = screen.id === "MAINCHAT";
+
+  useEffect(() => {
+    const onOpen = () => setNavOpen(true);
+    window.addEventListener(OPEN_APP_NAV_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_APP_NAV_EVENT, onOpen);
+  }, []);
 
   // A navigation landed on another screen, or the window grew past the drawer
   // breakpoint: either way the overlay drawer has done its job.
@@ -65,7 +78,7 @@ export function Shell({ screen, params, navigate, notifications, children }: She
   };
 
   return (
-    <div className="air-app" data-sidebar={breakpoint === "md" ? "collapsed" : undefined}>
+    <div className="air-app" data-sidebar={breakpoint === "md" ? "collapsed" : undefined} data-focus={chatFocus ? "chat" : undefined}>
       <a className="air-skip-link" href="#main">본문으로 건너뛰기</a>
       <nav className="air-sidebar" aria-label="주요 화면">
         <div>
@@ -105,7 +118,7 @@ export function Shell({ screen, params, navigate, notifications, children }: She
 
       <div className="air-main">
         <header className="air-topbar">
-          {isMobile ? (
+          {isMobile || chatFocus ? (
             <IconButton icon="menu" label="메뉴 열기" aria-expanded={navOpen} aria-controls="air-mobile-nav" onClick={() => setNavOpen(true)} />
           ) : null}
           <div className="air-topbar-heading">
@@ -250,8 +263,18 @@ function ConnectionBanners({ onOpenSettings }: { onOpenSettings: () => void }) {
 
   if (dismissed && connection.state === "unconfigured") return null;
 
+  // An empty banner row still costs its padding, which pushes the whole screen
+  // down a few pixels for nothing — so it only keeps that space when it speaks.
+  const speaking =
+    demoMode ||
+    (!gatewayUrl && !demoMode) ||
+    connection.state === "unreachable" ||
+    connection.state === "unauthenticated" ||
+    pending.length > 0 ||
+    failed.length > 0;
+
   return (
-    <div style={{ display: "grid", gap: 6, padding: "8px 16px 0" }}>
+    <div style={{ display: "grid", gap: 6, padding: speaking ? "8px 16px 0" : 0 }}>
       {demoMode ? (
         <div className="air-banner" data-tone="warn" role="status">
           <Icon name="sparkles" size={14} style={{ color: "var(--air-warn)", flex: "none" }} />

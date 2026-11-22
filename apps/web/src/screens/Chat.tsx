@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Badge, Banner, Button, Card, Dialog, Field, Icon, IconButton, Reveal, SectionHeader, Tabs, TextArea, TextInput } from "@ai-room/design-system";
+import { Badge, Banner, Button, Card, Dialog, Drawer, Field, Icon, IconButton, Reveal, SectionHeader, Tabs, TextArea, TextInput } from "@ai-room/design-system";
 import { useApp } from "../state/AppState.js";
 import { useResource, relativeTime, listOf } from "../api/hooks.js";
 import { RoomStream, type StreamStatus } from "../api/realtime.js";
@@ -7,18 +7,51 @@ import { newIdempotencyKey } from "../api/client.js";
 import type { AgentSummary, MemoryRecordDto, MessageDto, RoomSummary, SearchHitDto } from "../api/types.js";
 import { demoAgents, demoMemory, demoMessages, demoRooms, demoSearchHits } from "../demo/fixtures.js";
 import { normalizeWireMessage, type WireMessage } from "../api/wire.js";
-import { Composer, EditHistoryDialog, MessageList, ThreadPanel, type MessageActionHandlers } from "../components/chat/index.js";
+import { Composer, EditHistoryDialog, MessageList, ThreadPanel, type ComposerSendMeta, type MessageActionHandlers } from "../components/chat/index.js";
 import { DemoChip, DemoNote, EmptyHint, ResourceView, ScreenHeader, Section } from "../components/ui.js";
+import { openAppNav } from "../lib/shell-nav.js";
+import { chatTime, initialsOf } from "../lib/chat-format.js";
 import type { ScreenId } from "../lib/router.js";
 
 type Navigate = (id: ScreenId, params?: Record<string, string>) => void;
 
+/** The gateway spells a room as `room_type` + `latest_seq`; a screen reads `kind` + a last activity. */
+function normalizeRoom(raw: RoomSummary): RoomSummary {
+  const record = raw as unknown as Record<string, unknown>;
+  const type = typeof record["room_type"] === "string" ? record["room_type"] : typeof record["kind"] === "string" ? record["kind"] : "custom";
+  const kind: RoomSummary["kind"] = type === "main" || type === "default" ? "default" : type === "project" ? "project" : "custom";
+  return {
+    room_id: raw.room_id,
+    name: raw.name,
+    kind,
+    ...(typeof raw.member_count === "number" ? { member_count: raw.member_count } : {}),
+    ...(typeof raw.unread_count === "number" ? { unread_count: raw.unread_count } : {}),
+    ...(typeof record["updated_at"] === "string" ? { last_message_at: record["updated_at"] } : raw.last_message_at === undefined ? {} : { last_message_at: raw.last_message_at }),
+    ...(raw.project_id === undefined || raw.project_id === null ? {} : { project_id: raw.project_id }),
+    ...(typeof record["pinned"] === "boolean" ? { pinned: record["pinned"] } : kind === "default" ? { pinned: true } : {}),
+    ...(raw.topic === undefined || raw.topic === null ? {} : { topic: raw.topic }),
+  };
+}
+
 function useRooms() {
   const { client, gatewayUrl, demoMode } = useApp();
   const rooms = useResource<RoomSummary[]>(client, "/v1/rooms", { enabled: Boolean(gatewayUrl) && !demoMode, pollMs: 30000 });
-  const list = demoMode ? demoRooms : rooms.state.kind === "ready" ? listOf<RoomSummary>(rooms.state.data) : [];
+  const list = demoMode ? demoRooms : rooms.state.kind === "ready" ? listOf<RoomSummary>(rooms.state.data).map(normalizeRoom) : [];
   return { list, state: rooms.state, reload: rooms.reload };
 }
+
+function roomIcon(room: RoomSummary): "chat" | "project" | "rooms" {
+  return room.kind === "default" ? "chat" : room.kind === "project" ? "project" : "rooms";
+}
+
+const LIVE_TEXT: Record<StreamStatus, string> = {
+  idle: "실시간 연결 준비",
+  connecting: "실시간 연결 중",
+  live: "실시간 연결",
+  reconnecting: "재연결 중",
+  closed: "실시간 연결 종료",
+  error: "실시간 연결 오류",
+};
 
 /* ----------------------------------------------------------------- MAINCHAT */
 
@@ -39,7 +72,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
   });
 
   const agentList = demoMode ? demoAgents : agentsRes.state.kind === "ready" ? listOf<AgentSummary>(agentsRes.state.data) : [];
-  const agentName = (id: string): string => agentList.find((a) => a.agent_id === id)?.display_name ?? id;
+  const agentName = (id: string): string => agentList.find((a) => a.agent_id === id)?.display_name ?? (id === self.actor_id ? self.display_name : id);
   const baseMessages: MessageDto[] = demoMode
     ? demoMessages.filter((m) => m.room_id === roomId)
     : messagesRes.state.kind === "ready"
@@ -58,6 +91,11 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
   const [live, setLive] = useState<{ status: StreamStatus; detail?: string; received: number }>({ status: "idle", received: 0 });
   const [realtimeMessages, setRealtimeMessages] = useState<MessageDto[]>([]);
   const streamRef = useRef<RoomStream | null>(null);
+  const [roomsOpen, setRoomsOpen] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [newRoomOpen, setNewRoomOpen] = useState(false);
+  const [newRoomName, setNewRoomName] = useState("");
+  const [creatingRoom, setCreatingRoom] = useState(false);
 
   const messages: MessageDto[] = useMemo(() => {
     const merged = [...baseMessages];
@@ -110,7 +148,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
 
   // A hidden tab is throttled (its ping can miss the server's 45 s heartbeat
   // window) or frozen outright. Returning to the tab repairs the socket at once
-  // rather than after a backoff, so "실시간 수신 중" is honest when it is read.
+  // rather than after a backoff, so "실시간 수신" is honest when it is read.
   useEffect(() => {
     const wake = () => streamRef.current?.ensureConnected();
     const onVisibility = () => {
@@ -124,9 +162,20 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (toast === null) return;
+    const timer = window.setTimeout(() => setToast(null), 4200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
   const room = rooms.list.find((r) => r.room_id === roomId) ?? null;
   const roomReady = room !== null;
   const pendingHere = outbox.filter((o) => o.roomId === roomId && (o.state === "pending" || o.state === "failed"));
+  const needsSignIn = !demoMode && !roomReady && (
+    connection.state === "unauthenticated" ||
+    messagesRes.state.kind === "unauthenticated" ||
+    rooms.state.kind === "unauthenticated"
+  );
 
   // The room list arrives after the first render: move to the real default room
   // once it exists instead of keeping the placeholder id forever.
@@ -137,8 +186,11 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rooms.list]);
 
-  const send = async (blocks: MessageDto["blocks"]) => {
-    enqueueMessage(roomId, blocks);
+  const send = async (blocks: MessageDto["blocks"], _plain: string, meta?: ComposerSendMeta) => {
+    enqueueMessage(roomId, blocks, {
+      ...(meta?.replyToId ? { replyToId: meta.replyToId } : {}),
+      ...(meta?.mentionedIds && meta.mentionedIds.length > 0 ? { mentionedAgentIds: meta.mentionedIds } : {}),
+    });
     if (connection.state !== "ready") {
       setToast("오프라인: 보관함에 저장했습니다 (서버 저장 아님)");
       setReplyTo(null);
@@ -147,8 +199,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
     const result = await flushOutbox();
     if (result.accepted.length > 0) {
       // The POST answer carries the stored message, so the screen shows it now —
-      // without waiting for the socket or a refetch. "전송 요청됨" without proof
-      // is exactly what left a stored message invisible.
+      // without waiting for the socket or a refetch.
       setRealtimeMessages((prev) => {
         const next = [...prev];
         for (const wire of result.accepted) {
@@ -158,11 +209,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
         return next;
       });
       messagesRes.reload();
-      setToast(
-        result.failed > 0
-          ? `${result.accepted.length}건 전송됨 · ${result.failed}건 실패 — ${result.lastError ?? "서버 응답 확인 필요"}`
-          : "전송됨 — 서버에 저장되었습니다",
-      );
+      if (result.failed > 0) setToast(`${result.accepted.length}건 전송됨 · ${result.failed}건 실패 — ${result.lastError ?? "서버 응답 확인 필요"}`);
     } else if (result.failed > 0) {
       setToast(`전송 실패 — ${result.lastError ?? "서버가 거부했습니다"}`);
     } else if (result.busy) {
@@ -173,18 +220,47 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
     setReplyTo(null);
   };
 
-  const toggleReaction = (message: MessageDto, emoji: string) => {
-    setMineReactions((prev) => {
-      const mine = prev[message.message_id] ?? [];
-      const next = mine.includes(emoji) ? mine.filter((e) => e !== emoji) : [...mine, emoji];
-      return { ...prev, [message.message_id]: next };
+  /** Adds a reaction and keeps the server's aggregate; cancelling is local only (no DELETE route). */
+  const react = async (message: MessageDto, emoji: string) => {
+    const mine = mineReactions[message.message_id] ?? [];
+    const already = mine.includes(emoji);
+    const current = reactions[message.message_id] ?? message.reactions ?? {};
+    const nextMine = already ? mine.filter((e) => e !== emoji) : [...mine, emoji];
+    setMineReactions((prev) => ({ ...prev, [message.message_id]: nextMine }));
+    setReactions((prev) => ({
+      ...prev,
+      [message.message_id]: { ...current, [emoji]: Math.max(0, (current[emoji] ?? 0) + (already ? -1 : 1)) },
+    }));
+    if (already) {
+      setToast("반응을 이 화면에서 해제했습니다 — 서버는 반응 추가만 저장합니다");
+      return;
+    }
+    if (demoMode || !gatewayUrl) return;
+    const res = await client.request<{ reactions?: Array<{ emoji_key?: string; count?: number }> }>("POST", `/v1/messages/${encodeURIComponent(message.message_id)}/reactions`, {
+      body: { emoji_key: emoji },
+      idempotencyKey: newIdempotencyKey("reaction"),
     });
-    setReactions((prev) => {
-      const current = prev[message.message_id] ?? message.reactions ?? {};
-      const delta = (mineReactions[message.message_id] ?? []).includes(emoji) ? -1 : 1;
-      const count = Math.max(0, (current[emoji] ?? 0) + delta);
-      return { ...prev, [message.message_id]: { ...current, [emoji]: count } };
-    });
+    if (res.ok) {
+      const counts: Record<string, number> = {};
+      for (const entry of res.data?.reactions ?? []) {
+        if (typeof entry.emoji_key === "string" && typeof entry.count === "number") counts[entry.emoji_key] = entry.count;
+      }
+      if (Object.keys(counts).length > 0) setReactions((prev) => ({ ...prev, [message.message_id]: counts }));
+    } else {
+      // Put the optimistic count back: the server did not store it.
+      setMineReactions((prev) => ({ ...prev, [message.message_id]: mine }));
+      setReactions((prev) => ({ ...prev, [message.message_id]: current }));
+      setToast(`반응을 저장하지 못했습니다 — ${res.code}: ${res.message}`);
+    }
+  };
+
+  const copyText = (message: MessageDto) => {
+    const text = message.blocks
+      .map((b) => (typeof b.payload["markdown"] === "string" ? b.payload["markdown"] : typeof b.payload["text"] === "string" ? b.payload["text"] : ""))
+      .filter(Boolean)
+      .join("\n");
+    void navigator.clipboard?.writeText(text);
+    setToast("메시지를 복사했습니다");
   };
 
   const handlers: MessageActionHandlers = {
@@ -197,6 +273,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
       else next.add(m.message_id);
       return next;
     }),
+    onCopyText: copyText,
     onShareReference: (m) => {
       void navigator.clipboard?.writeText(`${window.location.origin}${location.pathname}#/chat?m=${m.message_id}`);
       setToast("공유 참조 링크를 복사했습니다");
@@ -212,114 +289,250 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
       return next;
     }),
     onOpenEditHistory: (m) => setHistoryFor(m),
+    onToggleReaction: (m, emoji) => void react(m, emoji),
+    onAddReaction: (m, emoji) => void react(m, emoji),
   };
 
+  const createRoom = async () => {
+    const name = newRoomName.trim();
+    if (name.length === 0 || demoMode || !gatewayUrl) return;
+    setCreatingRoom(true);
+    const res = await client.request<{ room_id?: string }>("POST", "/v1/rooms", {
+      body: { name, room_type: "custom" },
+      idempotencyKey: newIdempotencyKey("room"),
+    });
+    setCreatingRoom(false);
+    if (res.ok && typeof res.data?.room_id === "string") {
+      await rooms.reload();
+      setRoomId(res.data.room_id);
+      setNewRoomOpen(false);
+      setNewRoomName("");
+      setRoomsOpen(false);
+      setToast(`"${name}" 방을 만들었습니다`);
+    } else if (!res.ok) {
+      setToast(`방을 만들지 못했습니다 — ${res.code}: ${res.message}`);
+    } else {
+      setToast("방은 만들어졌지만 id를 받지 못했습니다 — 방 목록을 새로고침합니다");
+      await rooms.reload();
+    }
+  };
+
+  const memberCount = room?.member_count ?? agentList.length + 1;
+  const liveTone = live.status === "live" ? "live" : live.status === "reconnecting" ? "warn" : live.status === "error" ? "error" : "idle";
+  const liveLabel = live.status === "live"
+    ? LIVE_TEXT.live
+    : live.status === "reconnecting"
+      ? LIVE_TEXT.reconnecting
+      : live.status === "error"
+        ? LIVE_TEXT.error
+        : connection.state === "ready"
+          ? "연결 준비"
+          : "오프라인 · 초안 보관";
+
   return (
-    <div className="air-chat-screen" style={{ display: "grid", gridTemplateRows: "auto 1fr", height: "100%", minHeight: 0 }}>
-      <div style={{ padding: "10px 16px 0", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <div style={{ fontWeight: 700, fontSize: 14 }}>{room?.name ?? "단체 채팅"}</div>
-        {room?.topic ? <span className="air-hint">{room.topic}</span> : null}
-        <span style={{ flex: 1 }} />
-        <Badge tone={live.status === "live" ? "ok" : live.status === "reconnecting" ? "warn" : "neutral"} shape={live.status === "live" ? "solid" : "dashed"} title={live.detail ?? undefined}>
-          {live.status === "live"
-            ? `실시간 수신 중 (+${live.received})`
-            : live.status === "reconnecting"
-              ? "재연결 중"
-              : live.status === "error"
-                ? "실시간 오류"
-                : connection.state === "ready"
-                  ? "실시간 연결 준비"
-                  : "연결 없음 · 초안/보관함 사용"}
-        </Badge>
-        {demoMode ? <DemoChip on /> : null}
-        <Button size="sm" variant="ghost" icon="rooms" onClick={() => navigate("ROOMS")}>방 목록</Button>
-      </div>
-      {demoMode ? <div style={{ padding: "8px 16px 0" }}><DemoNote /></div> : null}
+    <div className="air-chat-screen">
+      <header className="air-chat-head">
+        <button type="button" className="air-chat-head-btn" onClick={openAppNav} aria-label="메뉴 열기" data-testid="chat-open-nav">
+          <Icon name="menu" size={18} />
+        </button>
 
-      <div className="air-chat" data-thread={threadRoot ? "open" : undefined}>
-        <aside className="air-chat-rooms" aria-label="방 목록">
-          <div className="air-nav-group-label" style={{ padding: "4px 6px" }}>방</div>
-          {rooms.list.length === 0 ? <div className="air-hint" style={{ padding: 8 }}>방 정보 없음</div> : null}
-          {rooms.list.map((r) => (
-            <button
-              key={r.room_id}
-              type="button"
-              className="air-nav-item"
-              aria-current={r.room_id === roomId ? "page" : undefined}
-              onClick={() => setRoomId(r.room_id)}
-              style={{ width: "100%", background: r.room_id === roomId ? undefined : "none", border: "1px solid transparent", textAlign: "left" }}
-            >
-              <Icon name={r.kind === "default" ? "chat" : r.kind === "project" ? "project" : "rooms"} size={14} />
-              <span className="air-truncate" style={{ flex: 1 }}>{r.name}</span>
-              {r.unread_count ? <span className="air-nav-count">{r.unread_count}</span> : null}
+        <div className="air-chat-head-main">
+          <button type="button" className="air-chat-room-btn" onClick={() => setRoomsOpen(true)} aria-haspopup="dialog" data-testid="chat-room-switch">
+            <span className="air-chat-room-name air-truncate">{room?.name ?? (needsSignIn ? "단체 채팅" : "방 불러오는 중…")}</span>
+            <Icon name="chevronDown" size={14} />
+          </button>
+          <div className="air-chat-subline">
+            <span className="air-chat-live" data-state={liveTone} title={live.detail ?? liveLabel} data-testid="chat-live-state">
+              <span className="air-chat-live-dot" data-state={liveTone} aria-hidden="true" />
+              {liveLabel}
+            </span>
+            <span className="air-chat-dot">·</span>
+            <button type="button" className="air-chat-members-link" onClick={() => setMembersOpen(true)}>
+              <Icon name="user" size={12} /> {memberCount}명
             </button>
-          ))}
-          <div style={{ padding: 8 }}>
-            <Button size="sm" block variant="ghost" icon="plus" onClick={() => navigate("ROOMS")}>방 만들기</Button>
+            {demoMode ? <DemoChip on /> : null}
           </div>
-        </aside>
+        </div>
 
-        <div className="air-chat-main">
-          <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--air-line)", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <Icon name="user" size={13} />
-            <span className="air-hint">{room?.member_count ?? "?"}명 참여</span>
-            <span className="air-hint">· 메시지 {messages.length}건</span>
-            <span style={{ flex: 1 }} />
-            <span className="air-hint">seq {messages.at(-1)?.room_seq ?? "—"}</span>
+        <div className="air-chat-head-actions">
+          <button type="button" className="air-avatar-stack" onClick={() => setMembersOpen(true)} aria-label={`참여 멤버 ${memberCount}명 보기`} title="참여 멤버">
+            {agentList.slice(0, 3).map((agent) => (
+              <span key={agent.agent_id} className="air-avatar air-avatar-stack-item" title={agent.display_name}>{initialsOf(agent.display_name)}</span>
+            ))}
+            <span className="air-avatar air-avatar-stack-item" data-owner="true" title={self.display_name}>{initialsOf(self.display_name)}</span>
+          </button>
+          <button type="button" className="air-chat-head-btn" onClick={() => setNewRoomOpen(true)} aria-label="새 방 만들기" title="새 방 만들기" data-testid="chat-new-room">
+            <Icon name="plus" size={18} />
+          </button>
+        </div>
+      </header>
+
+      {demoMode ? <div className="air-chat-demo"><DemoNote /></div> : null}
+      {!demoMode && needsSignIn ? (
+        <div className="air-chat-gate">
+          <div className="air-chat-gate-card">
+            <span className="air-chat-gate-icon" aria-hidden="true">💬</span>
+            <h2>AI ROOM에 오신 것을 환영합니다</h2>
+            <p>대화를 읽고 보내려면 소유자로 로그인하거나, AI를 초대해 이 방에 참여시키세요.</p>
+            <div className="air-chat-gate-actions">
+              <Button variant="primary" icon="lock" onClick={() => navigate("SIGNIN")}>소유자로 로그인</Button>
+              <Button variant="ghost" icon="key" onClick={() => navigate("AIJOIN")}>AI 참여 포털</Button>
+            </div>
+            <span className="air-hint">처음이라면 AI 참여 포털에서 초대 코드로 AI를 등록할 수 있습니다.</span>
           </div>
+        </div>
+      ) : (
+        <>
+          {!demoMode && !roomReady && roomId === "" ? (
+            <div className="air-chat-gate">
+              <div className="air-chat-loading" role="status">
+                <span className="air-chat-spinner" aria-hidden="true" />
+                방 정보를 불러오는 중입니다…
+              </div>
+            </div>
+          ) : null}
 
-          {/* `idle` here is "no room yet", not "server missing": the first render
-              after login is a fetch in flight, and calling that 서버 미연결 made a
-              working room look broken. */}
-          {!demoMode && (messagesRes.state.kind === "unauthenticated" || messagesRes.state.kind === "unavailable" || messagesRes.state.kind === "error") ? (
-            <div style={{ padding: 16 }}>
+          {!demoMode && (messagesRes.state.kind === "unavailable" || messagesRes.state.kind === "error") ? (
+            <div className="air-chat-note">
               <ResourceView state={messagesRes.state} onRetry={messagesRes.reload}>
                 {() => null}
               </ResourceView>
             </div>
           ) : null}
 
-          {!demoMode && roomId === "" ? (
-            <div style={{ display: "grid", placeItems: "center", padding: 40 }}>
-              <span className="air-hint">방 정보를 불러오는 중입니다…</span>
+          <div className="air-chat" data-thread={threadRoot ? "open" : undefined}>
+            <div className="air-chat-main">
+              {roomId !== "" || demoMode ? (
+                <MessageList
+                  messages={messages.map((m) => ({
+                    ...m,
+                    reactions: { ...(m.reactions ?? {}), ...(reactions[m.message_id] ?? {}) },
+                  }))}
+                  pending={pendingHere.map((item) => ({ item }))}
+                  handlers={handlers}
+                  self={self}
+                  roomId={roomId}
+                  nameOf={agentName}
+                />
+              ) : null}
+
+              <Composer
+                roomId={roomId}
+                agents={agentList.map((a) => ({ agent_id: a.agent_id, display_name: a.display_name, kind: a.kind ?? "agent" }))}
+                onSend={(blocks, plain, meta) => void send(blocks, plain, meta)}
+                disabled={!roomReady && !demoMode}
+                replyTo={replyTo}
+                replyToName={replyTo?.author.actor_id === self.actor_id ? self.display_name : replyTo ? agentName(replyTo.author.actor_id) : undefined}
+                onCancelReply={() => setReplyTo(null)}
+                typing={[]}
+                onAttach={() => setToast("첨부는 파일 화면에서 업로드합니다 — 업로드 진행률과 SHA-256이 표시됩니다")}
+              />
             </div>
-          ) : null}
 
-          {roomId === "" && !demoMode ? null : (
-            <MessageList
-              messages={messages.map((m) => ({
-                ...m,
-                reactions: { ...(m.reactions ?? {}), ...(reactions[m.message_id] ?? {}) },
-              }))}
-              pending={pendingHere.map((item) => ({ item }))}
-              handlers={handlers}
-              self={self}
-            />
-          )}
+            {threadRoot ? (
+              <ThreadPanel
+                root={threadRoot}
+                replies={[]}
+                onClose={() => setThreadRoot(null)}
+                notifyEnabled={threadNotify}
+                onNotifyToggle={() => setThreadNotify((v) => !v)}
+                composer={<Composer roomId={roomId} agents={agentList.map((a) => ({ agent_id: a.agent_id, display_name: a.display_name, kind: a.kind ?? "agent" }))} onSend={(blocks, plain, meta) => void send(blocks, plain, meta)} />}
+              />
+            ) : null}
+          </div>
+        </>
+      )}
 
-          <Composer
-            roomId={roomId}
-            agents={agentList.map((a) => ({ agent_id: a.agent_id, display_name: a.display_name, kind: a.kind ?? "agent" }))}
-            onSend={(blocks) => void send(blocks)}
-            disabled={!roomReady && !demoMode}
-            replyTo={replyTo}
-            onCancelReply={() => setReplyTo(null)}
-            typing={[]}
-            onAttach={() => setToast("첨부는 파일 화면에서 업로드합니다 — 업로드 진행률과 SHA-256이 표시됩니다")}
-          />
+      {/* Room switcher: a drawer on a phone, the same drawer on a desktop — one list, one behaviour. */}
+      <Drawer open={roomsOpen} onClose={() => setRoomsOpen(false)} title="방" side="left">
+        <div className="air-room-sheet" data-testid="chat-room-drawer">
+          {rooms.list.length === 0 ? <span className="air-hint" style={{ padding: 10, display: "block" }}>방 정보를 불러오는 중입니다…</span> : null}
+          {rooms.list.map((item) => (
+            <button
+              key={item.room_id}
+              type="button"
+              className="air-room-item"
+              data-active={item.room_id === roomId || undefined}
+              aria-current={item.room_id === roomId ? "true" : undefined}
+              onClick={() => {
+                setRoomId(item.room_id);
+                setRoomsOpen(false);
+              }}
+            >
+              <span className="air-room-icon"><Icon name={roomIcon(item)} size={15} /></span>
+              <span className="air-room-text">
+                <span className="air-room-name air-truncate">{item.name}{item.pinned ? <span className="air-room-pin">기본</span> : null}</span>
+                <span className="air-room-meta">{item.member_count ?? "?"}명 · {item.last_message_at ? relativeTime(item.last_message_at) : "기록 없음"}</span>
+              </span>
+              {item.unread_count ? <span className="air-room-badge">{item.unread_count}</span> : null}
+            </button>
+          ))}
+          <button type="button" className="air-room-add" onClick={() => { setRoomsOpen(false); setNewRoomOpen(true); }}>
+            <Icon name="plus" size={14} /> 새 방 만들기
+          </button>
+          <div className="air-room-sheet-foot">
+            <button type="button" className="air-btn" data-variant="ghost" data-size="sm" onClick={() => { setRoomsOpen(false); navigate("ROOMS"); }}>
+              <Icon name="rooms" size={13} /> 방 관리 화면 열기
+            </button>
+          </div>
         </div>
+      </Drawer>
 
-        {threadRoot ? (
-          <ThreadPanel
-            root={threadRoot}
-            replies={[]}
-            onClose={() => setThreadRoot(null)}
-            notifyEnabled={threadNotify}
-            onNotifyToggle={() => setThreadNotify((v) => !v)}
-            composer={<Composer roomId={roomId} agents={agentList.map((a) => ({ agent_id: a.agent_id, display_name: a.display_name, kind: a.kind ?? "agent" }))} onSend={(blocks) => void send(blocks)} />}
-          />
-        ) : null}
-      </div>
+      <Dialog open={membersOpen} onClose={() => setMembersOpen(false)} title={`참여 멤버 ${memberCount}명`} description="AI는 초대 코드로 참여하고, 이름 옆 표시는 검증 수준입니다">
+        <div className="air-member-list" data-testid="chat-member-list">
+          <div className="air-member-row">
+            <span className="air-avatar" data-ring="verified">{initialsOf(self.display_name)}</span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="air-member-name">{self.display_name}</div>
+              <div className="air-hint">나 · {self.kind === "owner" ? "소유자" : "AI 세션"}</div>
+            </div>
+            <Badge tone="ok">현재</Badge>
+          </div>
+          {agentList.map((agent) => (
+            <div key={agent.agent_id} className="air-member-row">
+              <span className="air-avatar">{initialsOf(agent.display_name)}</span>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div className="air-member-name">{agent.display_name}</div>
+                <div className="air-hint">{agent.provider ? `${agent.provider} · ` : ""}{agent.attestation === "provider_verified" ? "공급자 검증" : "자체 신고"}</div>
+              </div>
+              <Badge tone="info">AI</Badge>
+            </div>
+          ))}
+          {agentList.length === 0 ? <span className="air-hint">아직 참여한 AI가 없습니다 — AI 참여 포털에서 초대할 수 있습니다.</span> : null}
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={newRoomOpen}
+        onClose={() => setNewRoomOpen(false)}
+        title="새 방 만들기"
+        description="이름만 정하면 바로 만들어집니다"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setNewRoomOpen(false)}>취소</Button>
+            <Button variant="primary" icon="plus" disabled={newRoomName.trim().length === 0 || demoMode || !gatewayUrl} busy={creatingRoom} onClick={() => void createRoom()}>
+              {creatingRoom ? "만드는 중…" : "만들기"}
+            </Button>
+          </>
+        }
+      >
+        <div style={{ display: "grid", gap: 10 }}>
+          <Field label="방 이름" htmlFor="new-room-name" required hint="예: 콘텐츠 제작, 배포 점검">
+            <TextInput
+              id="new-room-name"
+              value={newRoomName}
+              maxLength={120}
+              autoFocus
+              placeholder="방 이름"
+              onChange={(e) => setNewRoomName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void createRoom();
+              }}
+            />
+          </Field>
+          <Banner tone="info" icon="info">기본 단체방은 한 번만 만들 수 있습니다. 만든 사람에게 자동 권한 승격은 없습니다.</Banner>
+        </div>
+      </Dialog>
 
       {toast ? (
         <div className="air-toast air-toast-float" role="status">
@@ -342,8 +555,29 @@ export function RoomsScreen({ navigate }: { navigate: Navigate }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"custom" | "project">("custom");
+  const [creating, setCreating] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [inviteRoom, setInviteRoom] = useState<RoomSummary | null>(null);
   const [inviteAgent, setInviteAgent] = useState("");
+
+  const create = async () => {
+    const clean = name.trim();
+    if (clean.length === 0) return;
+    setCreating(true);
+    const res = await client.request<{ room_id?: string }>("POST", "/v1/rooms", {
+      body: { name: clean, room_type: kind },
+      idempotencyKey: newIdempotencyKey("room"),
+    });
+    setCreating(false);
+    if (res.ok) {
+      setOpen(false);
+      setName("");
+      setNotice(`"${clean}" 방을 만들었습니다`);
+      rooms.reload();
+    } else {
+      setNotice(`방을 만들지 못했습니다 — ${res.code}: ${res.message}`);
+    }
+  };
 
   return (
     <div className="air-screen">
@@ -354,6 +588,7 @@ export function RoomsScreen({ navigate }: { navigate: Navigate }) {
         actions={<Button variant="primary" icon="plus" onClick={() => setOpen(true)}>방 만들기</Button>}
       />
       {demoMode ? <DemoNote /> : null}
+      {notice ? <Banner tone="info" icon="check">{notice}</Banner> : null}
       <Card>
         <SectionHeader title="모든 방" sub={`${rooms.list.length}개`} />
         <div style={{ padding: 12, display: "grid", gap: 8 }} className="air-stagger">
@@ -362,7 +597,7 @@ export function RoomsScreen({ navigate }: { navigate: Navigate }) {
           ) : null}
           {rooms.list.map((room) => (
             <div key={room.room_id} className="air-card" data-pad="sm" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <Icon name={room.kind === "default" ? "chat" : room.kind === "project" ? "project" : "rooms"} size={15} />
+              <Icon name={roomIcon(room)} size={15} />
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 600, fontSize: 12.5 }}>{room.name} {room.pinned ? <Badge tone="info" icon="pin">기본</Badge> : null}</div>
                 <div className="air-hint">
@@ -385,10 +620,10 @@ export function RoomsScreen({ navigate }: { navigate: Navigate }) {
         open={open}
         onClose={() => setOpen(false)}
         title="방 만들기"
-        footer={<><Button variant="ghost" onClick={() => setOpen(false)}>취소</Button><Button variant="primary" disabled={!name || !gatewayUrl || demoMode} onClick={() => setOpen(false)}>생성</Button></>}
+        footer={<><Button variant="ghost" onClick={() => setOpen(false)}>취소</Button><Button variant="primary" disabled={!name.trim() || !gatewayUrl || demoMode} busy={creating} onClick={() => void create()}>생성</Button></>}
       >
         <div style={{ display: "grid", gap: 10 }}>
-          <Field label="방 이름" htmlFor="room-name" required><TextInput id="room-name" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+          <Field label="방 이름" htmlFor="room-name" required><TextInput id="room-name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void create(); }} /></Field>
           <Field label="종류" htmlFor="room-kind"><select id="room-kind" className="air-select" value={kind} onChange={(e) => setKind(e.target.value as never)}><option value="custom">커스텀</option><option value="project">프로젝트 연결</option></select></Field>
           <Banner tone="info" icon="info">기본 단체방은 중복 생성이 차단됩니다. 방 창설자에게 자동 권한 승격은 없습니다.</Banner>
         </div>
