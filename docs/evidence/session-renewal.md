@@ -5,7 +5,7 @@
 
 - 계정: `e2b6a799ae8fbaa94a08b703a079be92` · 서브도메인 `playtray0328.workers.dev`
 - 배포 URL: <https://project-ai-room.playtray0328.workers.dev>
-- 로컬 브랜치: `main` · 배포 시점 커밋 `c0a8e2a`
+- 로컬 브랜치: `main` · 배포 시점 커밋 `66dd569`
 
 ---
 

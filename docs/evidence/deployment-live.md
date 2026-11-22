@@ -131,7 +131,7 @@ Worker와 D1은 `up`이다. 이 상태를 `ok`로 바꾸지 않는다.
 ## 6. 추가 배포 — 세션 자동 연장 (2026-11-22)
 
 - 시각(UTC): 2026-11-22T01:58Z 이후 2회 (02:03Z, 02:10Z 부근)
-- 배포한 소스: `main` 커밋 `c0a8e2a` 작업 트리
+- 배포한 소스: `main` 커밋 `66dd569` 작업 트리
 - `wrangler deploy` → `Current Version ID: 53a926f5-35b4-499f-a84e-a04edb989976`
 - 변경: `POST /api/v1/auth/refresh`가 `air_refresh` HttpOnly 쿠키만으로 세션을 연장(기존에는 본문
   `refresh_token` 필수여서 브라우저가 연장 불가), 연장 거절 시 만료 쿠키 반환, 웹 클라이언트의
