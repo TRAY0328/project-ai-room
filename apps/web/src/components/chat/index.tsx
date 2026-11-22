@@ -13,7 +13,7 @@ import { renderMessage, renderMarkdown, type MessageEnvelope } from "@ai-room/me
 import { MessageBody, VNodeView } from "@ai-room/message-blocks/react";
 import type { MessageDto } from "../../api/types.js";
 import { CodeActions } from "../files.js";
-import { chatTime, dayLabel, excerptOf, initialsOf, plainTextOf, sameDay } from "../../lib/chat-format.js";
+import { chatTime, excerptOf, initialsOf, kakaoDayLabel, plainTextOf, sameDay } from "../../lib/chat-format.js";
 
 /* --------------------------------------------------------------- reactions */
 
@@ -213,6 +213,7 @@ export function MessageCard({
   mineReactions,
   mine,
   grouped,
+  groupEnd = true,
   replyTo,
   onJumpToReply,
   onToggleReaction,
@@ -220,6 +221,7 @@ export function MessageCard({
   handlers,
   pendingDelivery,
   onDownloadCode,
+  onOpenActions,
 }: {
   message: MessageDto;
   index?: number;
@@ -231,6 +233,8 @@ export function MessageCard({
   mine?: boolean;
   /** Same author, same minute as the message above: no repeated avatar or name. */
   grouped?: boolean;
+  /** Last bubble of its group: this is where the clock belongs, the way KakaoTalk draws it. */
+  groupEnd?: boolean;
   replyTo?: ReplyTarget | null;
   onJumpToReply?: (message: MessageDto) => void;
   onToggleReaction?: (message: MessageDto, emoji: string) => void;
@@ -238,6 +242,8 @@ export function MessageCard({
   handlers: MessageActionHandlers;
   pendingDelivery?: boolean;
   onDownloadCode?: (code: string, filename: string) => void;
+  /** A tap / long press / right click on the bubble asks the room for its action sheet. */
+  onOpenActions?: (message: MessageDto) => void;
 }) {
   const rendered = useMemo(
     () => renderMessage(toEnvelope(message, pendingDelivery ? { delivery: "queued" } : {}), { now: Date.now() }),
@@ -251,19 +257,40 @@ export function MessageCard({
   const reactions = message.reactions ?? {};
   const hasReactions = Object.values(reactions).some((count) => count > 0);
   const delay = Math.min(index, 8) * 26;
+  const deleted = Boolean(message.deleted_at);
+  const showName = !mine && !grouped;
+  /** A press that stays down is a long press; a finger that scrolls is not. */
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressFired = useRef(false);
+
+  const openActions = () => {
+    if (deleted || onOpenActions === undefined) return;
+    // Selecting text is not a request for a menu.
+    const selection = typeof window !== "undefined" ? window.getSelection?.() : null;
+    if (selection !== null && selection !== undefined && (selection.toString().length > 0)) return;
+    onOpenActions(message);
+  };
+
+  const clearPress = () => {
+    if (pressTimer.current !== null) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
 
   return (
     <article
       className="air-msg"
       data-mine={mine || undefined}
       data-grouped={grouped || undefined}
+      data-group-end={groupEnd || undefined}
       data-important={important || undefined}
       data-pending={pendingDelivery || undefined}
       data-deleted={message.deleted_at ? "true" : undefined}
       style={{ "--air-msg-delay": `${delay}ms` } as CSSProperties}
     >
       <div className="air-msg-gutter" aria-hidden="true">
-        {!mine && !grouped ? (
+        {showName ? (
           <span className="air-avatar air-msg-avatar" data-ring={message.author.kind === "owner" ? "verified" : "none"}>
             {initialsOf(message.author.display_name)}
           </span>
@@ -271,24 +298,13 @@ export function MessageCard({
       </div>
 
       <div className="air-msg-col">
-        <div className="air-msg-meta">
-          {!mine && !grouped ? (
-            <span className="air-msg-name">
-              {message.author.display_name}
-              {message.author.attestation === "provider_verified" ? <Icon name="shieldHalf" size={11} title="공급자 검증" /> : null}
-            </span>
-          ) : null}
-          <time className="air-msg-time" dateTime={message.created_at} title={new Date(message.created_at).toISOString()}>
-            {chatTime(message.created_at)}
-          </time>
-          {note ? <span className="air-msg-delivery" data-tone={note.tone}>{note.label}</span> : null}
-          {message.delivery === "server_stored" && !pendingDelivery ? (
-            <span className="air-msg-saved" title={`서버에 저장됨${message.room_seq != null ? ` · seq ${message.room_seq}` : ""}`}>
-              <Icon name="check" size={11} /> 저장됨
-            </span>
-          ) : null}
-          {message.edited_at ? <span className="air-msg-edited">수정됨</span> : null}
-        </div>
+        {showName ? (
+          <div className="air-msg-name-row">
+            <span className="air-msg-name">{message.author.display_name}</span>
+            {message.author.kind === "agent" ? <span className="air-msg-badge">AI</span> : null}
+            {message.author.attestation === "provider_verified" ? <Icon name="shieldHalf" size={11} title="공급자 검증" /> : null}
+          </div>
+        ) : null}
 
         {replyTo ? (
           <button type="button" className="air-reply-quote" onClick={() => onJumpToReply?.(replyTo.message)} title="원문으로 이동">
@@ -297,14 +313,65 @@ export function MessageCard({
           </button>
         ) : null}
 
-        <div className="air-msg-bubble" tabIndex={0} aria-label={`${message.author.display_name} 메시지`}>
-          <MessageBody message={rendered} />
-          {codePayload?.code ? (
-            <CodeActions code={codePayload.code} filename={codePayload.filename} onDownload={onDownloadCode} />
-          ) : null}
-          {rendered.warnings.length > 0 ? (
-            <div className="air-hint" role="status">⚠ {rendered.warnings.join(" · ")}</div>
-          ) : null}
+        <div className="air-msg-line">
+          <div
+            className="air-msg-bubble"
+            tabIndex={0}
+            aria-label={`${message.author.display_name} 메시지`}
+            onClick={(event) => {
+              if (pressFired.current) {
+                pressFired.current = false;
+                return;
+              }
+              const target = event.target as HTMLElement;
+              // A link, a button or a code action inside the bubble keeps its own job.
+              if (target.closest("a, button, input, textarea, select") !== null) return;
+              openActions();
+            }}
+            onDoubleClick={openActions}
+            onContextMenu={(event) => {
+              if (onOpenActions === undefined || deleted) return;
+              event.preventDefault();
+              openActions();
+            }}
+            onPointerDown={(event) => {
+              if (onOpenActions === undefined || deleted) return;
+              if (event.pointerType === "mouse") return;
+              clearPress();
+              pressFired.current = false;
+              pressTimer.current = setTimeout(() => {
+                pressFired.current = true;
+                pressTimer.current = null;
+                onOpenActions(message);
+              }, 520);
+            }}
+            onPointerUp={clearPress}
+            onPointerLeave={clearPress}
+            onPointerCancel={clearPress}
+          >
+            <MessageBody message={rendered} />
+            {codePayload?.code ? (
+              <CodeActions code={codePayload.code} filename={codePayload.filename} onDownload={onDownloadCode} />
+            ) : null}
+            {rendered.warnings.length > 0 ? (
+              <div className="air-hint" role="status">⚠ {rendered.warnings.join(" · ")}</div>
+            ) : null}
+          </div>
+
+          <div className="air-msg-side">
+            {groupEnd ? (
+              <time className="air-msg-time" dateTime={message.created_at} title={new Date(message.created_at).toISOString()}>
+                {chatTime(message.created_at)}
+              </time>
+            ) : null}
+            {note ? <span className="air-msg-delivery" data-tone={note.tone}>{note.label}</span> : null}
+            {message.edited_at ? <span className="air-msg-edited">수정됨</span> : null}
+            {message.delivery === "server_stored" && !pendingDelivery ? (
+              <span className="air-msg-saved" title={`서버에 저장됨${message.room_seq != null ? ` · seq ${message.room_seq}` : ""}`}>
+                <Icon name="check" size={11} /> 저장됨
+              </span>
+            ) : null}
+          </div>
         </div>
 
         {hasReactions ? (
@@ -313,26 +380,33 @@ export function MessageCard({
             mine={mineReactions}
             onToggle={(emoji) => onToggleReaction?.(message, emoji)}
             onAddCustom={(emoji) => onAddReaction?.(message, emoji)}
-            disabled={Boolean(message.deleted_at)}
+            disabled={deleted}
           />
         ) : null}
 
         <div className="air-msg-tools">
-          {!message.deleted_at ? (
-            <div className="air-msg-quick" role="group" aria-label="빠른 반응">
-              {QUICK_EMOJI.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  className="air-quick-emoji"
-                  aria-label={`${emoji} 반응`}
-                  data-testid="quick-reaction"
-                  onClick={() => onAddReaction?.(message, emoji)}
-                >
-                  {emoji}
+          {!deleted ? (
+            <>
+              <div className="air-msg-quick" role="group" aria-label="빠른 반응">
+                {QUICK_EMOJI.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    className="air-quick-emoji"
+                    aria-label={`${emoji} 반응`}
+                    data-testid="quick-reaction"
+                    onClick={() => onAddReaction?.(message, emoji)}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+              {onOpenActions ? (
+                <button type="button" className="air-msg-more" onClick={() => onOpenActions(message)} data-testid="message-more">
+                  <Icon name="menu" size={13} /> 더보기
                 </button>
-              ))}
-            </div>
+              ) : null}
+            </>
           ) : null}
           <MessageActions message={message} important={important} bookmarked={bookmarked} delivered={delivered} handlers={handlers} />
         </div>
@@ -359,18 +433,32 @@ export interface ComposerProps {
   replyToName?: string;
   onCancelReply?: () => void;
   onAttach?: (files: File[]) => void;
+  /** Opens the `+` sheet that holds attachments, snippets and AI invitations. */
+  onOpenPlus?: () => void;
 }
 
 const DRAFT_PREFIX = "air.draft.";
 
+/** Ask the composer of the open room to take a snippet (the `+` sheet uses it). */
+export const COMPOSER_INSERT_EVENT = "air:composer-insert";
+
+export function insertIntoComposer(text: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent<string>(COMPOSER_INSERT_EVENT, { detail: text }));
+}
+
 /**
- * Composer (F-016, F-017, F-020..F-022, F-078, F-091).
+ * Composer (F-016, F-017, F-020..F-022, F-078, F-091) in the shape a messenger
+ * has: an empty field that grows, one round `+` on the left for attachments and
+ * extras, and one yellow send button on the right that only lights up when there
+ * is something to send.
+ *
  * Draft is stored per room in localStorage; duplicate submits inside 600ms are
  * ignored and reuse the same intent, so a double click cannot post twice.
  * Enter sends, Shift+Enter breaks the line, and a Korean IME's own Enter (key
  * 229 / isComposing) never sends the syllable being composed.
  */
-export function Composer({ roomId, agents, onSend, disabled, typing = [], replyTo, replyToName, onCancelReply, onAttach }: ComposerProps) {
+export function Composer({ roomId, agents, onSend, disabled, typing = [], replyTo, replyToName, onCancelReply, onAttach, onOpenPlus }: ComposerProps) {
   const storageKey = `${DRAFT_PREFIX}${roomId}`;
   const [value, setValue] = useState(() => {
     try {
@@ -412,6 +500,20 @@ export function Composer({ roomId, agents, onSend, disabled, typing = [], replyT
 
   useEffect(() => () => {
     if (sentTimer.current !== null) clearTimeout(sentTimer.current);
+  }, []);
+
+  // The `+` sheet hands a snippet to the composer instead of sending it: the
+  // writer still decides the words around the code block.
+  useEffect(() => {
+    const onInsert = (event: Event) => {
+      const text = (event as CustomEvent<string>).detail;
+      if (typeof text !== "string" || text.length === 0) return;
+      setMode("write");
+      setValue((prev) => (prev.trim().length === 0 ? text : `${prev.replace(/\s+$/, "")}\n${text}`));
+      window.setTimeout(() => textareaRef.current?.focus(), 0);
+    };
+    window.addEventListener(COMPOSER_INSERT_EVENT, onInsert);
+    return () => window.removeEventListener(COMPOSER_INSERT_EVENT, onInsert);
   }, []);
 
   const send = useCallback(() => {
@@ -500,8 +602,10 @@ export function Composer({ roomId, agents, onSend, disabled, typing = [], replyT
     </div>
   ) : null;
 
+  const canSend = !disabled && value.trim().length > 0;
+
   return (
-    <div className="air-composer">
+    <div className="air-composer" data-mode={mode}>
       {replyTo ? (
         <div className="air-composer-reply" role="status">
           <span className="air-composer-reply-bar" aria-hidden="true" />
@@ -516,13 +620,25 @@ export function Composer({ roomId, agents, onSend, disabled, typing = [], replyT
         </div>
       ) : null}
 
-      <div className="air-composer-box" data-mode={mode} data-ready={value.trim().length > 0 || undefined}>
-        {mode === "write" ? (
-          <>
+      <div className="air-composer-row">
+        <button
+          type="button"
+          className="air-composer-plus"
+          aria-label="첨부와 더보기"
+          title="첨부와 더보기"
+          onClick={onOpenPlus}
+          data-testid="composer-plus"
+        >
+          <Icon name="plus" size={21} />
+        </button>
+
+        <div className="air-composer-box" data-mode={mode} data-ready={canSend || undefined}>
+          {mode === "write" ? (
             <TextArea
               ref={textareaRef}
               aria-label="메시지 작성"
               data-testid="composer-input"
+              className="air-composer-input"
               placeholder={disabled ? "게이트웨이 연결 후 전송할 수 있습니다 (초안은 저장됩니다)" : "메시지를 입력하세요"}
               value={value}
               rows={1}
@@ -562,78 +678,79 @@ export function Composer({ roomId, agents, onSend, disabled, typing = [], replyT
                 }
               }}
             />
+          ) : (
+            <div className="air-composer-preview" data-testid="composer-preview">
+              {value.trim() ? (
+                <div className="mb-markdown" style={{ fontSize: 13 }}>
+                  <VNodeView node={{ t: "el", tag: "div", children: renderMarkdown(value, { allowRemoteImages: false }).nodes }} />
+                  <div className="air-hint" style={{ marginTop: 6 }}>미리보기 · 원격 이미지 자동 로드 안 함</div>
+                </div>
+              ) : (
+                <span className="air-hint">미리볼 내용이 없습니다</span>
+              )}
+            </div>
+          )}
 
-          </>
-        ) : (
-          <div className="air-composer-preview" data-testid="composer-preview">
-            {value.trim() ? (
-              <div className="mb-markdown" style={{ fontSize: 13 }}>
-                <VNodeView node={{ t: "el", tag: "div", children: renderMarkdown(value, { allowRemoteImages: false }).nodes }} />
-                <div className="air-hint" style={{ marginTop: 6 }}>미리보기 · 원격 이미지 자동 로드 안 함</div>
-              </div>
-            ) : (
-              <span className="air-hint">미리볼 내용이 없습니다</span>
-            )}
+          {/* Tools stay one row under the field: folded away while writing so the
+              bar is the messenger bar, unfolded when the field has the focus. */}
+          <div className="air-composer-bar">
+            <button
+              type="button"
+              className="air-composer-tool"
+              onClick={() => setMode(mode === "write" ? "preview" : "write")}
+              data-testid="composer-source-toggle"
+              title={mode === "write" ? "Markdown 미리보기" : "작성으로 돌아가기"}
+              aria-pressed={mode === "preview"}
+            >
+              <Icon name={mode === "write" ? "eye" : "edit"} size={14} />
+              <span className="air-composer-tool-label">{mode === "write" ? "미리보기" : "작성"}</span>
+            </button>
+            <label className="air-composer-tool" style={{ cursor: "pointer" }} title="파일 첨부">
+              <Icon name="paperclip" size={14} />
+              <span className="air-composer-tool-label">첨부</span>
+              <input
+                type="file"
+                multiple
+                style={{ display: "none" }}
+                aria-label="파일 첨부"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  if (files.length) onAttach?.(files);
+                  e.currentTarget.value = "";
+                }}
+              />
+            </label>
+            <span data-testid="composer-draft-state" className="air-hint air-composer-bar-note">
+              {saved ? `초안 저장됨 ${saved}` : value ? "초안 저장 중…" : "초안 없음"}
+            </span>
+            <span data-testid="typing-indicator" className="air-composer-bar-note" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {typing.length > 0 ? (
+                <>
+                  <TypingDots label={`${typing.map((t) => t.name).join(", ")} 입력 중`} />
+                  <span className="air-hint">{typing.map((t) => t.name).join(", ")} 입력 중</span>
+                </>
+              ) : null}
+            </span>
+            <span style={{ flex: 1 }} />
+            <span className="air-hint air-composer-bar-note air-composer-kbd">
+              <Kbd>Enter</Kbd> 전송 · <Kbd>Shift</Kbd>+<Kbd>Enter</Kbd> 줄바꿈
+            </span>
           </div>
-        )}
-
-        <div className="air-composer-bar">
-          <button
-            type="button"
-            className="air-composer-tool"
-            onClick={() => setMode(mode === "write" ? "preview" : "write")}
-            data-testid="composer-source-toggle"
-            title={mode === "write" ? "Markdown 미리보기" : "작성으로 돌아가기"}
-            aria-pressed={mode === "preview"}
-          >
-            <Icon name={mode === "write" ? "eye" : "edit"} size={14} />
-            <span className="air-composer-tool-label">{mode === "write" ? "미리보기" : "작성"}</span>
-          </button>
-          <label className="air-composer-tool" style={{ cursor: "pointer" }} title="파일 첨부">
-            <Icon name="paperclip" size={14} />
-            <span className="air-composer-tool-label">첨부</span>
-            <input
-              type="file"
-              multiple
-              style={{ display: "none" }}
-              aria-label="파일 첨부"
-              onChange={(e) => {
-                const files = Array.from(e.target.files ?? []);
-                if (files.length) onAttach?.(files);
-                e.currentTarget.value = "";
-              }}
-            />
-          </label>
-          <span data-testid="composer-draft-state" className="air-hint air-composer-bar-note">
-            {saved ? `초안 저장됨 ${saved}` : value ? "초안 저장 중…" : "초안 없음"}
-          </span>
-          <span data-testid="typing-indicator" className="air-composer-bar-note" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            {typing.length > 0 ? (
-              <>
-                <TypingDots label={`${typing.map((t) => t.name).join(", ")} 입력 중`} />
-                <span className="air-hint">{typing.map((t) => t.name).join(", ")} 입력 중</span>
-              </>
-            ) : null}
-          </span>
-          <span style={{ flex: 1 }} />
-          <span className="air-hint air-composer-bar-note air-composer-kbd">
-            <Kbd>Enter</Kbd> 전송 · <Kbd>Shift</Kbd>+<Kbd>Enter</Kbd> 줄바꿈
-          </span>
-          <Button
-            size="sm"
-            variant="primary"
-            icon="send"
-            className="air-send-btn"
-            data-sent={sent || undefined}
-            onClick={send}
-            disabled={disabled || !value.trim()}
-            aria-label="전송"
-            title="전송 (Enter)"
-            data-testid="send-dedupe"
-          >
-            <span className="air-send-label">전송</span>
-          </Button>
         </div>
+
+        <button
+          type="button"
+          className="air-composer-send"
+          data-sent={sent || undefined}
+          onClick={send}
+          disabled={!canSend}
+          aria-label="전송"
+          title="전송 (Enter)"
+          data-testid="send-dedupe"
+        >
+          <Icon name="send" size={18} />
+          <span className="air-send-label">전송</span>
+        </button>
       </div>
 
       {mentionList}
@@ -706,6 +823,7 @@ export function MessageList({
   loadingOlder = false,
   hasOlder = false,
   olderError = null,
+  onOpenActions,
 }: {
   messages: readonly MessageDto[];
   pending?: Array<{ item: { id: string; roomId: string; createdAt: string; blocks: MessageDto["blocks"]; state: string } }>;
@@ -721,6 +839,8 @@ export function MessageList({
   loadingOlder?: boolean;
   hasOlder?: boolean;
   olderError?: string | null;
+  /** A tap on a bubble asks the room for the message's action sheet. */
+  onOpenActions?: (message: MessageDto) => void;
 }) {
   const visible = filter
     ? messages.filter((m) => JSON.stringify(m.blocks).toLowerCase().includes(filter.toLowerCase()))
@@ -832,24 +952,46 @@ export function MessageList({
     setFlashId(message.message_id);
   };
 
-  let previous: MessageDto | null = null;
-  const rows: Array<{ kind: "day"; key: string; label: string } | { kind: "message"; key: string; message: MessageDto; index: number; grouped: boolean; mine: boolean; dayBreak: boolean }> = [];
-  let messageIndex = 0;
+  type Row =
+    | { kind: "day"; key: string; label: string }
+    | { kind: "message"; key: string; message: MessageDto; index: number; grouped: boolean; groupEnd: boolean; mine: boolean; dayBreak: boolean };
 
-  for (const message of visible) {
+  const rows: Row[] = [];
+  let messageIndex = 0;
+  const GROUP_MS = 5 * 60_000;
+
+  for (let i = 0; i < visible.length; i += 1) {
+    const message = visible[i]!;
+    const previous = visible[i - 1] ?? null;
+    const next = visible[i + 1] ?? null;
     const dayBreak = previous === null || !sameDay(previous.created_at, message.created_at);
     // The day stands above the first message of that day, the way a reader scans it.
-    if (dayBreak) rows.push({ kind: "day", key: `day-${message.message_id}`, label: dayLabel(message.created_at) });
+    if (dayBreak) rows.push({ kind: "day", key: `day-${message.message_id}`, label: kakaoDayLabel(message.created_at) });
+
+    const sameAsPrevious =
+      !dayBreak &&
+      previous !== null &&
+      previous.author.actor_id === message.author.actor_id &&
+      Math.abs(new Date(message.created_at).getTime() - new Date(previous.created_at).getTime()) < GROUP_MS;
+
+    // A group ends where the next bubble belongs to someone else (or another
+    // day, or far enough later): that last bubble carries the clock.
+    const sameAsNext =
+      next !== null &&
+      next.author.actor_id === message.author.actor_id &&
+      sameDay(next.created_at, message.created_at) &&
+      Math.abs(new Date(next.created_at).getTime() - new Date(message.created_at).getTime()) < GROUP_MS;
+
     rows.push({
       kind: "message",
       key: message.message_id,
       message,
       index: messageIndex,
-      grouped: !dayBreak && previous !== null && previous.author.actor_id === message.author.actor_id && Math.abs(new Date(message.created_at).getTime() - new Date(previous.created_at).getTime()) < 5 * 60_000,
+      grouped: sameAsPrevious,
+      groupEnd: !sameAsNext,
       mine: self !== undefined && message.author.actor_id === self.actor_id,
       dayBreak,
     });
-    previous = message;
     messageIndex += 1;
   }
 
@@ -898,8 +1040,8 @@ export function MessageList({
         {visible.length === 0 && pending.length === 0 ? (
           <div className="air-chat-empty">
             <span className="air-chat-empty-icon" aria-hidden="true">💬</span>
-            <strong>첫 메시지를 보내 보세요</strong>
-            <span className="air-hint">Enter로 전송 · Shift+Enter로 줄바꿈 · @로 AI를 부를 수 있습니다</span>
+            <strong>{filter ? "이 방에서 찾는 말이 없습니다" : "첫 메시지를 보내 보세요"}</strong>
+            <span className="air-hint">{filter ? "다른 낱말로 찾아보세요" : "Enter로 전송 · Shift+Enter로 줄바꿈 · @로 AI를 부를 수 있습니다"}</span>
           </div>
         ) : null}
 
@@ -920,10 +1062,12 @@ export function MessageList({
                 index={row.index}
                 mine={row.mine}
                 grouped={row.grouped && parent === null}
+                groupEnd={row.groupEnd}
                 replyTo={parent === null ? null : { message: parent, name: parent.author.actor_id === (self?.actor_id ?? "") ? (self?.display_name ?? parent.author.display_name) : (nameOf?.(parent.author.actor_id) ?? parent.author.display_name) }}
                 onJumpToReply={jumpTo}
                 onToggleReaction={(message, emoji) => handlers.onToggleReaction?.(message, emoji)}
                 onAddReaction={(message, emoji) => handlers.onAddReaction?.(message, emoji)}
+                onOpenActions={onOpenActions}
                 handlers={handlers}
               />
             </div>

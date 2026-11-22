@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Badge, Banner, Button, Card, Dialog, Drawer, Field, Icon, IconButton, Reveal, SectionHeader, Tabs, TextArea, TextInput } from "@ai-room/design-system";
+import { Badge, Banner, Button, Card, Dialog, Drawer, Field, Icon, IconButton, Reveal, SectionHeader, Tabs, TextArea, TextInput, useTheme } from "@ai-room/design-system";
 import { useApp } from "../state/AppState.js";
 import { useResource, relativeTime, listOf } from "../api/hooks.js";
 import { RoomStream, type StreamStatus } from "../api/realtime.js";
@@ -8,10 +8,12 @@ import type { AgentSummary, MemoryRecordDto, MessageDto, RoomSummary, SearchHitD
 import { demoAgents, demoMemory, demoMessages, demoRooms, demoSearchHits } from "../demo/fixtures.js";
 import { normalizeWireMessage, type WireMessage } from "../api/wire.js";
 import { readCachedMessages, readCachedRooms, readLastRoomId, rememberLastRoomId, writeCachedMessages, writeCachedRooms } from "../api/chat-cache.js";
-import { Composer, EditHistoryDialog, MessageList, ThreadPanel, type ComposerSendMeta, type MessageActionHandlers } from "../components/chat/index.js";
+import { Composer, EditHistoryDialog, MessageList, ThreadPanel, insertIntoComposer, type ComposerSendMeta, type MessageActionHandlers } from "../components/chat/index.js";
+import { ChatActionSheet, ChatSheet, SheetRow, type ChatAction } from "../components/chat/sheets.js";
+import { AiJoinScreen, SignInScreen } from "./Start.js";
 import { DemoChip, DemoNote, EmptyHint, ResourceView, ScreenHeader, Section } from "../components/ui.js";
 import { openAppNav } from "../lib/shell-nav.js";
-import { chatTime, initialsOf } from "../lib/chat-format.js";
+import { chatTime, excerptOf, initialsOf } from "../lib/chat-format.js";
 import type { ScreenId } from "../lib/router.js";
 
 type Navigate = (id: ScreenId, params?: Record<string, string>) => void;
@@ -72,7 +74,8 @@ const OLDER_PAGE = 30;
 /* ----------------------------------------------------------------- MAINCHAT */
 
 export function MainChatScreen({ navigate }: { navigate: Navigate }) {
-  const { client, gatewayUrl, demoMode, outbox, enqueueMessage, flushOutbox, connection, self, session, renewSession } = useApp();
+  const { client, gatewayUrl, setGatewayUrl, demoMode, setDemoMode, outbox, enqueueMessage, flushOutbox, retryOutbox, connection, refreshConnection, self, session, renewSession } = useApp();
+  const { theme, toggle: toggleTheme } = useTheme();
   const rooms = useRooms();
   // The room this browser was last in is remembered, so the first message request
   // starts on mount instead of after the room list answers. Until the list
@@ -140,6 +143,19 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
   const [newRoomOpen, setNewRoomOpen] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
   const [creatingRoom, setCreatingRoom] = useState(false);
+  /* Every one of these opens on top of the room — a sheet, a drawer or a
+     dialog — so a conversation is never left for another page. */
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [plusOpen, setPlusOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
+  const [signinOpen, setSigninOpen] = useState(false);
+  const [actionsFor, setActionsFor] = useState<MessageDto | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MessageDto | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [gatewayInput, setGatewayInput] = useState(gatewayUrl ?? "");
 
   const messages: MessageDto[] = useMemo(() => {
     const merged = [...baseMessages];
@@ -497,131 +513,507 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
       ? LIVE_TEXT.reconnecting
       : live.status === "error"
         ? LIVE_TEXT.error
-        : connection.state === "ready"
+        : connection?.state === "ready"
           ? "연결 준비"
           : "오프라인 · 초안 보관";
 
+  /* ------------------------------------------------- in-room sheets & actions */
+
+  const copy = async (text: string, note: string) => {
+    try {
+      await navigator.clipboard?.writeText(text);
+      setToast(note);
+    } catch {
+      setToast("복사할 수 없습니다 — 주소를 직접 선택해 복사하세요");
+    }
+  };
+
+  const roomMessagesWithReactions = messages.map((m) => ({
+    ...m,
+    reactions: { ...(m.reactions ?? {}), ...(reactions[m.message_id] ?? {}) },
+  }));
+
+  const searchMatches = searchQuery.trim().length === 0
+    ? messages.length
+    : roomMessagesWithReactions.filter((m) => JSON.stringify(m.blocks).toLowerCase().includes(searchQuery.trim().toLowerCase())).length;
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery("");
+  };
+
+  const openSearch = () => {
+    setSearchOpen(true);
+    setSearchQuery("");
+  };
+
+  const removeMessage = async (message: MessageDto) => {
+    if (demoMode || !gatewayUrl) {
+      setToast("데모에서는 삭제를 서버로 보내지 않습니다");
+      return;
+    }
+    setDeleting(true);
+    const res = await client.request<{ message_id?: string; deleted_at?: string }>(
+      "DELETE",
+      `/v1/rooms/${encodeURIComponent(message.room_id)}/messages/${encodeURIComponent(message.message_id)}`,
+    );
+    setDeleting(false);
+    if (res.ok) {
+      setRealtimeMessages((prev) => prev.filter((m) => m.message_id !== message.message_id));
+      setSeeded((prev) => prev.filter((m) => m.message_id !== message.message_id));
+      messagesRes.reload();
+      setToast("메시지를 삭제했습니다 — 서버에 삭제 기록이 남습니다");
+    } else {
+      setToast(`삭제하지 못했습니다 — ${res.code}: ${res.message}`);
+    }
+  };
+
+  const actionFor = actionsFor;
+  const messageActions: ChatAction[] = actionFor === null ? [] : [
+    { icon: "reply", label: "답장", onClick: () => setReplyTo(actionFor), testId: "msg-action-reply" },
+    { icon: "copy", label: "복사", onClick: () => copyText(actionFor), testId: "msg-action-copy" },
+    { icon: "thread", label: "스레드 열기", onClick: () => setThreadRoot(actionFor), testId: "msg-action-thread" },
+    {
+      icon: "bookmark",
+      label: bookmarks.has(actionFor.message_id) ? "북마크 해제" : "북마크",
+      onClick: () => setBookmarks((prev) => {
+        const next = new Set(prev);
+        if (next.has(actionFor.message_id)) next.delete(actionFor.message_id);
+        else next.add(actionFor.message_id);
+        return next;
+      }),
+      testId: "msg-action-bookmark",
+    },
+    {
+      icon: "sparkles",
+      label: important.has(actionFor.message_id) ? "중요 해제" : "중요 표시",
+      onClick: () => setImportant((prev) => {
+        const next = new Set(prev);
+        if (next.has(actionFor.message_id)) next.delete(actionFor.message_id);
+        else next.add(actionFor.message_id);
+        return next;
+      }),
+      testId: "msg-action-important",
+    },
+    { icon: "external", label: "공유 참조 링크 복사", onClick: () => copy(`${window.location.origin}${location.pathname}#/chat?m=${actionFor.message_id}`, "공유 참조 링크를 복사했습니다"), testId: "msg-action-link" },
+    ...(actionFor.edited_at
+      ? [{ icon: "history" as const, label: "편집 기록", onClick: () => setHistoryFor(actionFor), testId: "msg-action-history" }]
+      : []),
+    ...(actionFor.deleted_at
+      ? []
+      : [{ icon: "trash" as const, label: "삭제", tone: "danger" as const, onClick: () => setDeleteTarget(actionFor), testId: "msg-action-delete" }]),
+  ];
+
+  const portalUrl = `${window.location.origin}${window.location.pathname}#/ai-join`;
+  const invitePrompt = [
+    "PROJECT AI ROOM에 AI로 참여해 주세요.",
+    `1) 안내문: ${window.location.origin}/ai-portal.txt`,
+    `2) 가입 폼: ${portalUrl}`,
+    "3) 초대 코드와 이름을 넣고 등록하면 API 키가 1회 표시됩니다.",
+    "4) 같은 화면에서 원클릭 로그인하면 이 채팅방에 들어옵니다.",
+    "초대 코드는 소유자가 발급한 1회용 토큰입니다. 받은 코드를 그대로 넣으세요.",
+  ].join("\n");
+
   return (
     <div className="air-chat-screen">
-      <header className="air-chat-head">
-        <button type="button" className="air-chat-head-btn" onClick={openAppNav} aria-label="메뉴 열기" data-testid="chat-open-nav">
-          <Icon name="menu" size={18} />
-        </button>
-
-        <div className="air-chat-head-main">
-          <button type="button" className="air-chat-room-btn" onClick={() => setRoomsOpen(true)} aria-haspopup="dialog" data-testid="chat-room-switch">
-            <span className="air-chat-room-name air-truncate">{room?.name ?? (needsSignIn ? "단체 채팅" : "방 불러오는 중…")}</span>
-            <Icon name="chevronDown" size={14} />
+      <div className="air-chat-frame">
+        <header className="air-chat-head">
+          <button type="button" className="air-chat-head-btn" onClick={() => setRoomsOpen(true)} aria-label="방 목록" title="방 목록" data-testid="chat-room-list">
+            <Icon name="rooms" size={19} />
           </button>
-          <div className="air-chat-subline">
-            <span className="air-chat-live" data-state={liveTone} title={live.detail ?? liveLabel} data-testid="chat-live-state">
-              <span className="air-chat-live-dot" data-state={liveTone} aria-hidden="true" />
-              {liveLabel}
-            </span>
-            <span className="air-chat-dot">·</span>
-            <button type="button" className="air-chat-members-link" onClick={() => setMembersOpen(true)}>
-              <Icon name="user" size={12} /> {memberCount}명
+
+          <div className="air-chat-head-main">
+            <button type="button" className="air-chat-room-btn" onClick={() => setMembersOpen(true)} aria-haspopup="dialog" data-testid="chat-room-switch">
+              <span className="air-chat-room-name air-truncate">{room?.name ?? (needsSignIn ? "AI ROOM" : "AI ROOM")}</span>
+              <Icon name="chevronDown" size={13} />
             </button>
-            {demoMode ? <DemoChip on /> : null}
-          </div>
-        </div>
-
-        <div className="air-chat-head-actions">
-          <button type="button" className="air-avatar-stack" onClick={() => setMembersOpen(true)} aria-label={`참여 멤버 ${memberCount}명 보기`} title="참여 멤버">
-            {agentList.slice(0, 3).map((agent) => (
-              <span key={agent.agent_id} className="air-avatar air-avatar-stack-item" title={agent.display_name}>{initialsOf(agent.display_name)}</span>
-            ))}
-            <span className="air-avatar air-avatar-stack-item" data-owner="true" title={self.display_name}>{initialsOf(self.display_name)}</span>
-          </button>
-          <button type="button" className="air-chat-head-btn" onClick={() => setNewRoomOpen(true)} aria-label="새 방 만들기" title="새 방 만들기" data-testid="chat-new-room">
-            <Icon name="plus" size={18} />
-          </button>
-        </div>
-      </header>
-
-      {demoMode ? <div className="air-chat-demo"><DemoNote /></div> : null}
-      {!demoMode && needsSignIn ? (
-        <div className="air-chat-gate">
-          <div className="air-chat-gate-card">
-            <span className="air-chat-gate-icon" aria-hidden="true">💬</span>
-            <h2>AI ROOM에 오신 것을 환영합니다</h2>
-            <p>대화를 읽고 보내려면 소유자로 로그인하거나, AI를 초대해 이 방에 참여시키세요.</p>
-            <div className="air-chat-gate-actions">
-              <Button variant="primary" icon="lock" onClick={() => navigate("SIGNIN")}>소유자로 로그인</Button>
-              <Button variant="ghost" icon="key" onClick={() => navigate("AIJOIN")}>AI 참여 포털</Button>
+            <div className="air-chat-subline">
+              <button type="button" className="air-chat-members-link" onClick={() => setMembersOpen(true)}>
+                {memberCount}명
+              </button>
+              <span className="air-chat-dot" aria-hidden="true">·</span>
+              <span className="air-chat-live" data-state={liveTone} title={live.detail ?? liveLabel} data-testid="chat-live-state">
+                <span className="air-chat-live-dot" data-state={liveTone} aria-hidden="true" />
+                {liveLabel}
+              </span>
+              {demoMode ? <DemoChip on /> : null}
             </div>
-            <span className="air-hint">처음이라면 AI 참여 포털에서 초대 코드로 AI를 등록할 수 있습니다.</span>
           </div>
-        </div>
-      ) : (
-        <>
-          {!demoMode && !roomReady && roomId === "" ? (
-            <div className="air-chat-gate">
+
+          <div className="air-chat-head-actions">
+            <button
+              type="button"
+              className="air-chat-head-btn"
+              onClick={() => (searchOpen ? closeSearch() : openSearch())}
+              aria-label="대화 검색"
+              aria-pressed={searchOpen}
+              title="대화 검색"
+              data-testid="chat-search-toggle"
+            >
+              <Icon name="search" size={18} />
+            </button>
+            <button
+              type="button"
+              className="air-chat-head-btn"
+              onClick={() => setMenuOpen(true)}
+              aria-label="톡서랍 열기"
+              title="톡서랍"
+              data-testid="chat-open-nav"
+            >
+              <Icon name="menu" size={19} />
+            </button>
+          </div>
+        </header>
+
+        {searchOpen ? (
+          <div className="air-chat-search" role="search">
+            <span className="air-chat-search-icon" aria-hidden="true"><Icon name="search" size={15} /></span>
+            <input
+              className="air-chat-search-input"
+              type="search"
+              value={searchQuery}
+              autoFocus
+              placeholder="이 방에서 메시지 찾기"
+              aria-label="이 방에서 메시지 찾기"
+              data-testid="chat-search-input"
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") closeSearch();
+              }}
+            />
+            <span className="air-chat-search-count" data-testid="chat-search-count">
+              {searchQuery.trim().length === 0 ? "" : `${searchMatches}개`}
+            </span>
+            <button type="button" className="air-chat-search-close" onClick={closeSearch} aria-label="검색 닫기">
+              <Icon name="close" size={15} />
+            </button>
+          </div>
+        ) : null}
+
+        {demoMode ? <div className="air-chat-demo"><DemoNote /></div> : null}
+
+        <div className="air-chat" data-thread={threadRoot ? "open" : undefined}>
+          <div className="air-chat-main">
+            {!demoMode && !roomReady && roomId === "" && !needsSignIn ? (
               <div className="air-chat-loading" role="status">
                 <span className="air-chat-spinner" aria-hidden="true" />
                 방 정보를 불러오는 중입니다…
               </div>
-            </div>
-          ) : null}
+            ) : null}
 
-          {!demoMode && (messagesRes.state.kind === "unavailable" || messagesRes.state.kind === "error") ? (
-            <div className="air-chat-note">
-              <ResourceView state={messagesRes.state} onRetry={messagesRes.reload}>
-                {() => null}
-              </ResourceView>
-            </div>
-          ) : null}
+            {!demoMode && (messagesRes.state.kind === "unavailable" || messagesRes.state.kind === "error") ? (
+              <div className="air-chat-note">
+                <ResourceView state={messagesRes.state} onRetry={messagesRes.reload}>
+                  {() => null}
+                </ResourceView>
+              </div>
+            ) : null}
 
-          <div className="air-chat" data-thread={threadRoot ? "open" : undefined}>
-            <div className="air-chat-main">
-              {roomId !== "" || demoMode ? (
+            {!demoMode && needsSignIn ? (
+              /* The room stays, the conversation does not: a system notice in the
+                 message column, the way a messenger asks to sign in. */
+              <div className="air-chat-gate">
+                <div className="air-chat-gate-card">
+                  <span className="air-chat-gate-avatar" aria-hidden="true">💬</span>
+                  <h2>대화를 읽으려면 로그인이 필요해요</h2>
+                  <p>소유자로 로그인하거나, AI를 초대해 이 방에 참여시키세요. 어느 쪽이든 이 화면 위에서 바로 끝납니다.</p>
+                  <div className="air-chat-gate-actions">
+                    <Button variant="primary" icon="lock" onClick={() => setSigninOpen(true)} data-testid="chat-gate-signin">로그인</Button>
+                    <Button variant="ghost" icon="sparkles" onClick={() => setJoinOpen(true)} data-testid="chat-gate-join">AI 가입 폼</Button>
+                  </div>
+                  <button type="button" className="air-chat-gate-link" onClick={() => setInviteOpen(true)}>
+                    AI에게 보낼 초대 프롬프트 복사
+                  </button>
+                </div>
+              </div>
+            ) : (
+              (roomId !== "" || demoMode) ? (
                 <MessageList
-                  messages={messages.map((m) => ({
-                    ...m,
-                    reactions: { ...(m.reactions ?? {}), ...(reactions[m.message_id] ?? {}) },
-                  }))}
+                  messages={roomMessagesWithReactions}
                   pending={pendingHere.map((item) => ({ item }))}
                   handlers={handlers}
                   self={self}
                   roomId={roomId}
                   nameOf={agentName}
+                  filter={searchOpen && searchQuery.trim().length > 0 ? searchQuery.trim() : undefined}
                   onLoadOlder={() => void loadOlder()}
                   loadingOlder={olderState.loading}
                   hasOlder={!olderState.done}
                   olderError={olderState.error}
+                  onOpenActions={(message) => setActionsFor(message)}
                 />
-              ) : null}
+              ) : (
+                <div className="air-chat-body" />
+              )
+            )}
 
-              <Composer
-                roomId={roomId}
-                agents={agentList.map((a) => ({ agent_id: a.agent_id, display_name: a.display_name, kind: a.kind ?? "agent" }))}
-                onSend={(blocks, plain, meta) => void send(blocks, plain, meta)}
-                disabled={!roomReady && !demoMode}
-                replyTo={replyTo}
-                replyToName={replyTo?.author.actor_id === self.actor_id ? self.display_name : replyTo ? agentName(replyTo.author.actor_id) : undefined}
-                onCancelReply={() => setReplyTo(null)}
-                typing={[]}
-                onAttach={() => setToast("첨부는 파일 화면에서 업로드합니다 — 업로드 진행률과 SHA-256이 표시됩니다")}
-              />
-            </div>
-
-            {threadRoot ? (
-              <ThreadPanel
-                root={threadRoot}
-                replies={[]}
-                onClose={() => setThreadRoot(null)}
-                notifyEnabled={threadNotify}
-                onNotifyToggle={() => setThreadNotify((v) => !v)}
-                composer={<Composer roomId={roomId} agents={agentList.map((a) => ({ agent_id: a.agent_id, display_name: a.display_name, kind: a.kind ?? "agent" }))} onSend={(blocks, plain, meta) => void send(blocks, plain, meta)} />}
-              />
-            ) : null}
+            <Composer
+              roomId={roomId}
+              agents={agentList.map((a) => ({ agent_id: a.agent_id, display_name: a.display_name, kind: a.kind ?? "agent" }))}
+              onSend={(blocks, plain, meta) => void send(blocks, plain, meta)}
+              disabled={needsSignIn || (!roomReady && !demoMode)}
+              replyTo={replyTo}
+              replyToName={replyTo?.author.actor_id === self.actor_id ? self.display_name : replyTo ? agentName(replyTo.author.actor_id) : undefined}
+              onCancelReply={() => setReplyTo(null)}
+              typing={[]}
+              onOpenPlus={() => setPlusOpen(true)}
+              onAttach={(files) => {
+                const names = files.map((f) => f.name).join(", ");
+                setToast(files.length > 0
+                  ? `첨부 ${files.length}개 선택됨 (${names}) — 파일 업로드는 서버 스토리지 활성화 후 가능합니다`
+                  : "첨부할 파일을 고르지 않았습니다");
+              }}
+            />
           </div>
-        </>
-      )}
 
-      {/* Room switcher: a drawer on a phone, the same drawer on a desktop — one list, one behaviour. */}
-      <Drawer open={roomsOpen} onClose={() => setRoomsOpen(false)} title="방" side="left">
-        <div className="air-room-sheet" data-testid="chat-room-drawer">
+          {threadRoot ? (
+            <ThreadPanel
+              root={threadRoot}
+              replies={[]}
+              onClose={() => setThreadRoot(null)}
+              notifyEnabled={threadNotify}
+              onNotifyToggle={() => setThreadNotify((v) => !v)}
+              composer={<Composer roomId={roomId} agents={agentList.map((a) => ({ agent_id: a.agent_id, display_name: a.display_name, kind: a.kind ?? "agent" }))} onSend={(blocks, plain, meta) => void send(blocks, plain, meta)} onOpenPlus={() => setPlusOpen(true)} />}
+            />
+          ) : null}
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------ sheets */}
+
+      {/* `+` : attachments, snippets and the two AI paths, all above the room. */}
+      <ChatSheet open={plusOpen} onClose={() => setPlusOpen(false)} title="첨부와 더보기" variant="compact" testId="chat-plus-sheet">
+        <div className="air-plus-grid">
+          <label className="air-plus-tile">
+            <span className="air-plus-icon"><Icon name="file" size={20} /></span>
+            <span>사진</span>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="air-plus-input"
+              aria-label="사진 선택"
+              data-testid="plus-photo"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                setPlusOpen(false);
+                if (files.length > 0) setToast(`사진 ${files.length}장 선택됨 — 파일 업로드는 서버 스토리지 활성화 후 가능합니다`);
+                e.currentTarget.value = "";
+              }}
+            />
+          </label>
+          <label className="air-plus-tile">
+            <span className="air-plus-icon"><Icon name="paperclip" size={20} /></span>
+            <span>파일</span>
+            <input
+              type="file"
+              multiple
+              className="air-plus-input"
+              aria-label="파일 선택"
+              data-testid="plus-file"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                setPlusOpen(false);
+                if (files.length > 0) setToast(`파일 ${files.length}개 선택됨 — 파일 업로드는 서버 스토리지 활성화 후 가능합니다`);
+                e.currentTarget.value = "";
+              }}
+            />
+          </label>
+          <button type="button" className="air-plus-tile" data-testid="plus-code" onClick={() => { setPlusOpen(false); insertIntoComposer("```\n\n```"); }}>
+            <span className="air-plus-icon"><Icon name="code" size={20} /></span>
+            <span>코드 블록</span>
+          </button>
+          <button type="button" className="air-plus-tile" data-testid="plus-task" onClick={() => { setPlusOpen(false); insertIntoComposer("- [ ] \n- [ ] "); }}>
+            <span className="air-plus-icon"><Icon name="board" size={20} /></span>
+            <span>작업 목록</span>
+          </button>
+          <button type="button" className="air-plus-tile" data-testid="plus-invite" onClick={() => { setPlusOpen(false); setInviteOpen(true); }}>
+            <span className="air-plus-icon"><Icon name="key" size={20} /></span>
+            <span>AI 초대</span>
+          </button>
+          <button type="button" className="air-plus-tile" data-testid="plus-join" onClick={() => { setPlusOpen(false); setJoinOpen(true); }}>
+            <span className="air-plus-icon"><Icon name="sparkles" size={20} /></span>
+            <span>AI 가입</span>
+          </button>
+        </div>
+        <p className="air-sheet-note">
+          코드 블록·작업 목록은 입력창에 초안으로 들어갑니다 — 보내기 전에 다듬을 수 있어요.
+          파일 업로드는 서버 스토리지(R2)가 켜진 뒤에 전송됩니다.
+        </p>
+      </ChatSheet>
+
+      {/* The right drawer: everything that is not the conversation itself. */}
+      <ChatSheet open={menuOpen} onClose={() => setMenuOpen(false)} title="톡서랍" side="right" testId="chat-menu-drawer">
+        <div className="air-drawer-self">
+          <span className="air-avatar" data-ring={self.kind === "owner" ? "verified" : "none"}>{initialsOf(self.display_name)}</span>
+          <div className="air-drawer-self-text">
+            <span className="air-drawer-self-name">{self.display_name}</span>
+            <span className="air-drawer-self-meta">
+              {session ? `소유자 · ${session.owner_id}` : self.kind === "agent" ? "AI 세션" : "로그인하지 않음"}
+            </span>
+          </div>
+          {session === null ? (
+            <button type="button" className="air-drawer-login" onClick={() => { setMenuOpen(false); setSigninOpen(true); }} data-testid="drawer-signin">
+              로그인
+            </button>
+          ) : (
+            <span className="air-drawer-state" data-tone={connection?.state === "ready" ? "ok" : "warn"}>
+              {connection?.state === "ready" ? "연결됨" : connection?.state === "unauthenticated" ? "세션 만료" : "확인 필요"}
+            </span>
+          )}
+        </div>
+
+        <div className="air-drawer-section">대화</div>
+        <SheetRow icon="search" label="대화 검색" detail="이 방의 메시지에서 찾기" onClick={() => { setMenuOpen(false); openSearch(); }} testId="drawer-search" />
+        <SheetRow icon="rooms" label="방 목록" detail={`${rooms.list.length}개 방`} onClick={() => { setMenuOpen(false); setRoomsOpen(true); }} testId="drawer-rooms" />
+        <SheetRow icon="user" label="참여자" detail="AI·사람 목록과 상태" meta={`${memberCount}명`} onClick={() => { setMenuOpen(false); setMembersOpen(true); }} testId="drawer-members" />
+        <SheetRow icon="plus" label="새 방 만들기" onClick={() => { setMenuOpen(false); setNewRoomOpen(true); }} testId="drawer-new-room" />
+        {outbox.filter((o) => o.state === "pending" || o.state === "failed").length > 0 ? (
+          <SheetRow
+            icon="refresh"
+            label="오프라인 보관함"
+            detail="아직 서버에 저장되지 않은 메시지"
+            meta={`대기 ${outbox.filter((o) => o.state === "pending").length} · 실패 ${outbox.filter((o) => o.state === "failed").length}`}
+            onClick={() => {
+              const failed = outbox.find((o) => o.state === "failed");
+              if (failed) void retryOutbox(failed.id);
+              else void flushOutbox();
+            }}
+            testId="drawer-outbox"
+          />
+        ) : null}
+
+        <div className="air-drawer-section">AI</div>
+        <SheetRow icon="key" label="AI 초대" detail="초대 프롬프트·가입 링크 복사" onClick={() => { setMenuOpen(false); setInviteOpen(true); }} testId="drawer-invite" />
+        <SheetRow icon="sparkles" label="AI 가입 폼" detail="AI가 직접 쓰는 가입·로그인" onClick={() => { setMenuOpen(false); setJoinOpen(true); }} testId="drawer-join" />
+
+        <div className="air-drawer-section">연결·설정</div>
+        <div className="air-drawer-settings">
+          <div className="air-drawer-setting-row">
+            <span className="air-sheet-row-icon" aria-hidden="true"><Icon name="server" size={17} /></span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="air-sheet-row-label">게이트웨이</div>
+              <div className="air-sheet-row-detail">{gatewayUrl ?? "설정되지 않음"} · {connection?.state ?? "확인 전"}</div>
+            </div>
+            <button type="button" className="air-drawer-mini" onClick={() => void refreshConnection()} data-testid="drawer-recheck">확인</button>
+          </div>
+          <div className="air-gateway-form">
+            <input
+              className="air-input"
+              value={gatewayInput}
+              onChange={(e) => setGatewayInput(e.target.value)}
+              placeholder="https://…workers.dev"
+              aria-label="게이트웨이 URL"
+              inputMode="url"
+              data-testid="drawer-gateway-input"
+            />
+            <button
+              type="button"
+              className="air-drawer-mini"
+              onClick={() => {
+                setGatewayUrl(gatewayInput.trim() === "" ? null : gatewayInput.trim());
+                void refreshConnection();
+                setToast("게이트웨이 URL을 저장했습니다");
+              }}
+            >
+              저장
+            </button>
+          </div>
+        </div>
+        <SheetRow
+          icon="eye"
+          label={demoMode ? "데모 끄기" : "데모 데이터로 보기"}
+          detail="서버 없이 화면을 살펴보는 시연 모드"
+          onClick={() => setDemoMode(!demoMode)}
+          testId="drawer-demo"
+        />
+        <SheetRow
+          icon={theme === "dark" ? "sun" : "moon"}
+          label={theme === "dark" ? "라이트 테마" : "다크 테마"}
+          onClick={toggleTheme}
+          testId="drawer-theme"
+        />
+        <SheetRow icon="admin" label="관리자 화면 전체 열기" detail="승인·감사·백업·출시 게이트" onClick={() => { setMenuOpen(false); navigate("ADMIN"); }} testId="drawer-admin" />
+        <SheetRow icon="menu" label="전체 화면 메뉴" detail="프로젝트·코드·거버넌스 화면" onClick={() => { setMenuOpen(false); openAppNav(); }} testId="drawer-all-screens" />
+
+        <div className="air-drawer-foot">
+          <span className="air-hint">방 안에서 끝나지 않는 작업은 이 메뉴에서만 열립니다.</span>
+        </div>
+      </ChatSheet>
+
+      {/* Message actions: long press, right click or a tap on the bubble. */}
+      <ChatActionSheet
+        open={actionFor !== null && deleteTarget === null}
+        onClose={() => setActionsFor(null)}
+        title={actionFor === null ? "메시지" : `${actionFor.author.display_name}의 메시지`}
+        actions={messageActions}
+      />
+
+      <ChatSheet
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title="메시지 삭제"
+        variant="compact"
+        testId="chat-delete-confirm"
+        footer={
+          <div className="air-sheet-actions">
+            <button type="button" className="air-sheet-cancel" onClick={() => setDeleteTarget(null)}>취소</button>
+            <button
+              type="button"
+              className="air-sheet-confirm"
+              data-tone="danger"
+              disabled={deleting}
+              onClick={async () => {
+                if (deleteTarget === null) return;
+                await removeMessage(deleteTarget);
+                setDeleteTarget(null);
+                setActionsFor(null);
+              }}
+            >
+              {deleting ? "삭제 중…" : "삭제"}
+            </button>
+          </div>
+        }
+      >
+        <p className="air-sheet-note">
+          {deleteTarget === null ? "" : `“${excerptOf(deleteTarget, 80)}”\n\n삭제하면 대화에서 사라지고 서버에는 삭제 기록만 남습니다. 되돌릴 수 없습니다.`}
+        </p>
+      </ChatSheet>
+
+      {/* AI invitation: the prompt an owner pastes into another AI's chat. */}
+      <ChatSheet open={inviteOpen} onClose={() => setInviteOpen(false)} title="AI 초대" subtitle="프롬프트와 가입 링크를 복사해 AI에게 건네세요" testId="chat-invite-sheet">
+        <pre className="air-invite-prompt" data-testid="invite-prompt">{invitePrompt}</pre>
+        <div className="air-sheet-actions">
+          <button type="button" className="air-sheet-cancel" onClick={() => copy(invitePrompt, "AI 초대 프롬프트를 복사했습니다")} data-testid="invite-copy-prompt">
+            <Icon name="copy" size={14} /> 프롬프트 복사
+          </button>
+          <button type="button" className="air-sheet-confirm" onClick={() => copy(portalUrl, "AI 가입 링크를 복사했습니다")} data-testid="invite-copy-link">
+            <Icon name="external" size={14} /> 가입 링크 복사
+          </button>
+        </div>
+        <SheetRow icon="sparkles" label="AI 가입 폼 열기" detail="AI가 이 브라우저에서 직접 가입·로그인" onClick={() => { setInviteOpen(false); setJoinOpen(true); }} testId="invite-open-join" />
+        <p className="air-sheet-note">
+          초대 코드는 소유자 부트스트랩 때 1회 발급됩니다. 코드가 없다면 관리자 화면에서 초대를 발급한 뒤 같은 프롬프트로 전달하세요.
+        </p>
+      </ChatSheet>
+
+      {/* AI join form: the real screen, mounted above the room instead of away from it. */}
+      <ChatSheet open={joinOpen} onClose={() => setJoinOpen(false)} title="AI 가입 · 로그인" side="right" variant="tall" testId="chat-join-panel">
+        <div className="air-embedded-screen">
+          <AiJoinScreen navigate={(id) => { setJoinOpen(false); navigate(id); }} />
+        </div>
+      </ChatSheet>
+
+      {/* Owner sign-in, also inside the room. */}
+      <ChatSheet open={signinOpen} onClose={() => setSigninOpen(false)} title="소유자 로그인" side="right" variant="tall" testId="chat-signin-panel">
+        <div className="air-embedded-screen">
+          <SignInScreen navigate={(id) => { setSigninOpen(false); navigate(id); }} />
+        </div>
+      </ChatSheet>
+
+      {/* Room switcher: the same list as a phone sheet. */}
+      <ChatSheet open={roomsOpen} onClose={() => setRoomsOpen(false)} title="대화방" testId="chat-room-drawer">
+        <div className="air-room-sheet">
           {rooms.list.length === 0 ? <span className="air-hint" style={{ padding: 10, display: "block" }}>방 정보를 불러오는 중입니다…</span> : null}
           {rooms.list.map((item) => (
             <button
@@ -646,15 +1038,21 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
           <button type="button" className="air-room-add" onClick={() => { setRoomsOpen(false); setNewRoomOpen(true); }}>
             <Icon name="plus" size={14} /> 새 방 만들기
           </button>
-          <div className="air-room-sheet-foot">
-            <button type="button" className="air-btn" data-variant="ghost" data-size="sm" onClick={() => { setRoomsOpen(false); navigate("ROOMS"); }}>
-              <Icon name="rooms" size={13} /> 방 관리 화면 열기
-            </button>
-          </div>
         </div>
-      </Drawer>
+      </ChatSheet>
 
-      <Dialog open={membersOpen} onClose={() => setMembersOpen(false)} title={`참여 멤버 ${memberCount}명`} description="AI는 초대 코드로 참여하고, 이름 옆 표시는 검증 수준입니다">
+      <ChatSheet
+        open={membersOpen}
+        onClose={() => setMembersOpen(false)}
+        title={`참여자 ${memberCount}명`}
+        subtitle="AI는 초대 코드로 참여하고, 이름 옆 표시는 검증 수준입니다"
+        testId="chat-member-sheet"
+        footer={
+          <button type="button" className="air-sheet-confirm" onClick={() => { setMembersOpen(false); setInviteOpen(true); }}>
+            <Icon name="key" size={14} /> AI 초대하기
+          </button>
+        }
+      >
         <div className="air-member-list" data-testid="chat-member-list">
           <div className="air-member-row">
             <span className="air-avatar" data-ring="verified">{initialsOf(self.display_name)}</span>
@@ -674,9 +1072,9 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
               <Badge tone="info">AI</Badge>
             </div>
           ))}
-          {agentList.length === 0 ? <span className="air-hint">아직 참여한 AI가 없습니다 — AI 참여 포털에서 초대할 수 있습니다.</span> : null}
+          {agentList.length === 0 ? <span className="air-hint">아직 참여한 AI가 없습니다 — AI 초대에서 프롬프트를 복사해 전달하세요.</span> : null}
         </div>
-      </Dialog>
+      </ChatSheet>
 
       <Dialog
         open={newRoomOpen}

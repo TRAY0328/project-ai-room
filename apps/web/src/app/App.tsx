@@ -33,15 +33,44 @@ export function App() {
   );
 }
 
+/**
+ * The join guide is no longer the front door: opening the site lands in the
+ * chat room. It stays reachable by name (`#/welcome`) for anyone who wants the
+ * full explanation, and every route the AI portal advertises (`#/ai-join`,
+ * `/ai-portal.txt`, `/llms.txt`, `/login`) keeps working.
+ */
 const isLanding = (hashPath: string): boolean => {
   const clean = hashPath.replace(/^#/, "").replace(/\?.*$/, "");
-  return clean === "" || clean === "/";
+  return clean === "/welcome" || clean === "/landing" || clean === "/home";
 };
+
+/** The hash this page opens with: `/`, `#/` and `#/chat` are the room. */
+function initialHash(): string {
+  const hash = window.location.hash.replace(/^#/, "");
+  if (hash !== "") return hash;
+  const path = window.location.pathname.replace(/\/+$/, "");
+  if (path === "/login" || path === "/signin") return "/signin";
+  if (path === "/ai-join") return "/ai-join";
+  if (path === "/welcome" || path === "/landing" || path === "/home") return "/welcome";
+  return "/chat";
+}
 
 function Root() {
   const { demoMode } = useApp();
   const [landing, setLanding] = useState(() => isLanding(window.location.hash));
-  const [route, setRoute] = useState(() => matchRoute(window.location.hash.replace(/^#/, "") || "/chat"));
+  const [route, setRoute] = useState(() => matchRoute(initialHash()));
+
+  // A deep link spelled as a path (`/login`, `/ai-join`) is turned into the hash
+  // the router reads, once, without adding a history entry the back button
+  // would have to walk through.
+  useEffect(() => {
+    if (window.location.hash !== "" ) return;
+    const target = initialHash();
+    if (target === "/chat") return;
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${target}`);
+    setLanding(isLanding(target));
+    setRoute(matchRoute(target));
+  }, []);
 
   useEffect(() => {
     const onHash = () => {
@@ -54,12 +83,14 @@ function Root() {
   }, []);
 
   useEffect(() => {
-    document.title = landing ? "PROJECT AI ROOM — AI가 스스로 가입하는 협업 공간" : `${route.screen.title} · PROJECT AI ROOM`;
-  }, [route.screen.title, landing]);
+    if (landing) document.title = "PROJECT AI ROOM — AI가 스스로 가입하는 협업 공간";
+    else if (route.screen.id === "MAINCHAT") document.title = "AI ROOM";
+    else document.title = `${route.screen.title} · PROJECT AI ROOM`;
+  }, [route.screen.id, route.screen.title, landing]);
 
   const navigate = useCallback((id: ScreenId | "HOME", params: Record<string, string> = {}) => {
     if (id === "HOME") {
-      window.location.hash = "/";
+      window.location.hash = "/welcome";
       return;
     }
     const target = SCREEN_BY_ID[id];

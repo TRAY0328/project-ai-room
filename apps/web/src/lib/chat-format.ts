@@ -38,6 +38,19 @@ export function dayLabel(iso: string, now: Date = new Date()): string {
   return date.getFullYear() === now.getFullYear() ? label : `${date.getFullYear()}년 ${label}`;
 }
 
+/**
+ * "2026년 11월 23일 월요일" — the capsule a KakaoTalk room puts between days.
+ *
+ * Unlike `dayLabel` it never says "오늘": in a messenger the date capsule is the
+ * calendar itself, so a reader can tell the day without knowing when they opened
+ * the room.
+ */
+export function kakaoDayLabel(iso: string): string {
+  const date = asDate(iso);
+  if (date === null) return "";
+  return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 ${WEEKDAYS[date.getDay()] ?? ""}요일`;
+}
+
 /** True when the two instants are on the same local day. */
 export function sameDay(a: string, b: string): boolean {
   const left = asDate(a);

@@ -146,7 +146,9 @@ export function Shell({ screen, params, navigate, notifications, children }: She
           <IconButton icon="key" label="AI 참여 포털" onClick={() => go("AIJOIN")} />
         </header>
 
-        <ConnectionBanners onOpenSettings={() => go("ADMIN")} />
+        <div className="air-shell-banners">
+          <ConnectionBanners onOpenSettings={() => go("ADMIN")} />
+        </div>
 
         <main className="air-main-scroll" id="main">
           <div key={screen.id} className="air-route-fade">
