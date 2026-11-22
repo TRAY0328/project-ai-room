@@ -148,11 +148,15 @@ export function SplashScreen({ percent, stageIndex, exiting }: { percent: number
 
   return (
     <div className="air-splash" data-state={exiting ? "exit" : "in"} role="status" aria-live="polite" aria-label={`로딩 ${shown}% · ${label}`}>
+      <div className="air-splash-aurora" aria-hidden="true">
+        <span /><span /><span />
+      </div>
       <div className="air-splash-stars" aria-hidden="true">
-        <span /><span /><span /><span /><span /><span />
+        <span /><span /><span /><span /><span /><span /><span /><span />
       </div>
       <div className="air-splash-card">
         <div className="air-splash-emblem" aria-hidden="true">
+          <span className="air-splash-emblem-compass" />
           <span className="air-splash-emblem-ring" />
           <span className="air-splash-emblem-ring air-splash-emblem-ring-delay" />
           <span className="air-splash-emblem-face">
@@ -170,7 +174,7 @@ export function SplashScreen({ percent, stageIndex, exiting }: { percent: number
             <span className="air-splash-percent-value">{shown}</span>
             <span className="air-splash-percent-unit">%</span>
           </span>
-          <span className="air-splash-step" key={label}>
+          <span className="air-splash-step" key={label} data-done={done || undefined}>
             <span className="air-splash-step-icon" aria-hidden="true">
               <Icon name={icon} size={13} />
             </span>

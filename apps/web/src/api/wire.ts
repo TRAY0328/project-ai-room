@@ -77,11 +77,17 @@ export function normalizeWireMessage(raw: WireMessage, nameOf: (agentId: string)
   const authorId = raw.author?.actor_id ?? raw.author_id ?? "";
   const explicitName = raw.author?.display_name;
   const deleted = raw.deleted_at ?? null;
-  const blocks = (raw.blocks ?? []).map((block) => ({
-    type: block.type ?? block.block_type ?? "text",
-    version: typeof block.version === "number" ? block.version : 1,
-    payload: block.payload ?? {},
-  }));
+  const blocks = (raw.blocks ?? []).map((block) => {
+    const stored = block.type ?? block.block_type ?? "text";
+    // The gateway stores an attachment as `file`/`image`; the renderer spells
+    // them `file_ref`/`image_ref`. The payload passes through either way.
+    const type = stored === "file" ? "file_ref" : stored === "image" ? "image_ref" : stored;
+    return {
+      type,
+      version: typeof block.version === "number" ? block.version : 1,
+      payload: block.payload ?? {},
+    };
+  });
   // A message with only a plain body still has to say something on screen.
   if (blocks.length === 0 && deleted === null && typeof raw.body_plain_text === "string" && raw.body_plain_text.trim().length > 0) {
     blocks.push({ type: "markdown", version: 1, payload: { markdown: raw.body_plain_text } });

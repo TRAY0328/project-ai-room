@@ -22,6 +22,11 @@ export const zBlockType = z.enum([
   "diff",
   "file",
   "image",
+  /* The web client's renderer spells attachments `file_ref`/`image_ref`; both
+     spellings normalize to the stored `file`/`image` below, so a client can
+     send the shape it renders without a second vocabulary. */
+  "file_ref",
+  "image_ref",
   "quote",
   "task_ref",
   "commit_ref",
@@ -71,6 +76,12 @@ export const zBlock = z
     version: block.version ?? 1,
     payload: block.payload,
     ...(block.source_ref === undefined ? {} : { source_ref: block.source_ref }),
+  }))
+  .transform((block) => ({
+    ...block,
+    // The stored (and re-served) spelling of an attachment is `file`/`image`;
+    // the payload keeps whichever renderer keys the client sent.
+    block_type: (block.block_type === "file_ref" ? "file" : block.block_type === "image_ref" ? "image" : block.block_type) as BlockTypeName,
   }));
 
 export type NormalizedBlock = z.infer<typeof zBlock>;

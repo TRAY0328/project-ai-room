@@ -23,6 +23,7 @@ import { readCookie, jsonResponse, successEnvelope, SESSION_COOKIE } from "./htt
 import { forwardRoomUpgrade } from "./realtime.js";
 import { aclRevision, blocked, ensureMainRoom, getMessageForPrincipal, getProject, getRoom, serializeMessage, setEmergencyStop } from "./domain.js";
 import { nowOf } from "./env.js";
+import { storageGet, storageMode, storagePut } from "./storage.js";
 
 interface ExtContext {
   readonly request: Request;
@@ -236,41 +237,100 @@ route("PUT", "/api/v1/files/uploads/{uploadId}/content", async (ctx, params) => 
   if (file.creator_id !== principal.subject.id && principal.subject.kind !== "owner") {
     throw new ApiError({ code: "PERMISSION_DENIED", requestId: ctx.requestId, details: { reason_code: "SELF_ONLY" } });
   }
-  if (ctx.env.R2 === undefined) throw blocked(ctx.requestId, "R2_NOT_ENABLED");
+  if (storageMode(ctx.env) === "none") throw blocked(ctx.requestId, "R2_NOT_ENABLED");
   const bytes = await readBytes(ctx.request, ctx.requestId);
   if (bytes.length !== file.size_bytes) {
     throw new ApiError({ code: "VALIDATION_FAILED", requestId: ctx.requestId, message: "선언한 크기와 본문 크기가 다릅니다.", details: { declared: file.size_bytes, received: bytes.length } });
   }
-  await ctx.env.R2.put(file.r2_key, bytes, { contentType: "application/octet-stream" });
-  await ctx.env.DB.prepare("UPDATE files SET storage_state = 'uploading' WHERE file_id = ?").bind(file.file_id).run();
-  return ok(ctx, { upload_id: file.file_id, received_bytes: bytes.length, next: "POST /files/uploads/{uploadId}/complete 로 sha256을 확정하세요." });
+  // The bridge returns its own id, so the row's storage key becomes `gdrive:<fileId>`;
+  // every later read and the complete-step verification go through that column.
+  const stored = await storagePut(ctx.env, file.r2_key, bytes, "application/octet-stream", file.file_id, ctx.requestId);
+  await ctx.env.DB.prepare("UPDATE files SET r2_key = ?, storage_state = 'uploading' WHERE file_id = ?").bind(stored.key, file.file_id).run();
+  return ok(ctx, { upload_id: file.file_id, received_bytes: bytes.length, storage_key: stored.key, next: "POST /files/uploads/{uploadId}/complete 로 sha256을 확정하세요." });
 });
+
+/**
+ * Session fallback for the content GET: an <img src="/api/v1/files/{id}/content">
+ * carries the room member's cookie, not a grant, and that is exactly how a chat
+ * attachment is displayed. Same permissions as the download-intent: owner, the
+ * file's project, or the room the file was sent to.
+ */
+async function downloadPrincipal(ctx: ExtContext): Promise<Principal | null> {
+  const header = ctx.request.headers.get("authorization") ?? "";
+  const bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  const cookie = readCookie(ctx.request.headers.get("cookie"), SESSION_COOKIE) ?? "";
+  const token = bearer.length > 0 ? bearer : cookie;
+  if (token.length === 0) return null;
+  try {
+    const authenticated = await ctx.auth.authenticate(token, ctx.requestId);
+    return await loadPrincipal(ctx.env.DB, authenticated);
+  } catch {
+    return null;
+  }
+}
 
 async function serveDownload(ctx: ExtContext, params: Record<string, string>, kind: "file" | "artifact"): Promise<Response> {
   const grantToken = ctx.url.searchParams.get("grant") ?? "";
   const signingKey = ctx.env.SESSION_SIGNING_KEY;
   if (signingKey === undefined) throw blocked(ctx.requestId, "DOWNLOAD_SIGNING_KEY_MISSING");
   const verification = await verifyDownloadGrant(grantToken, signingKey, ctx.nowMs);
-  if (!verification.ok) throw new ApiError({ code: "AUTH_REVOKED", requestId: ctx.requestId, details: { reason: verification.reason } });
-  const grant = verification.grant;
-  if (grant.target_kind !== kind) throw new ApiError({ code: "PERMISSION_DENIED", requestId: ctx.requestId, details: { reason_code: "GRANT_TARGET_MISMATCH" } });
-  const expectedId = kind === "file" ? params["fileId"] : params["artifactId"];
-  if (grant.target_id !== expectedId) throw new ApiError({ code: "PERMISSION_DENIED", requestId: ctx.requestId, details: { reason_code: "GRANT_TARGET_MISMATCH" } });
+  let grantedTargetId: string | null = null;
+  /** Set when the bytes are going to the signed-in reader instead of a grant. */
+  let sessionFallback: Principal | null = null;
+  if (verification.ok) {
+    const grant = verification.grant;
+    if (grant.target_kind !== kind) throw new ApiError({ code: "PERMISSION_DENIED", requestId: ctx.requestId, details: { reason_code: "GRANT_TARGET_MISMATCH" } });
+    const expectedId = kind === "file" ? params["fileId"] : params["artifactId"];
+    if (grant.target_id !== expectedId) throw new ApiError({ code: "PERMISSION_DENIED", requestId: ctx.requestId, details: { reason_code: "GRANT_TARGET_MISMATCH" } });
+    grantedTargetId = grant.target_id;
+  } else {
+    // Without a valid grant the bytes may still go to the reader the browser
+    // authenticated: a chat <img> carries a session cookie, not a grant.
+    sessionFallback = await downloadPrincipal(ctx);
+    if (sessionFallback === null) {
+      throw new ApiError({ code: "AUTH_REVOKED", requestId: ctx.requestId, details: { reason: verification.reason } });
+    }
+  }
   const row = kind === "file"
-    ? await firstRow<{ r2_key: string; filename: string; deleted_at: string | null; scan_state: string }>(ctx.env.DB, "SELECT r2_key, filename, deleted_at, scan_state FROM files WHERE file_id = ?", grant.target_id)
-    : await firstRow<{ r2_key: string; version: string; deleted_at: string | null; verification_state: string }>(ctx.env.DB, "SELECT r2_key, version, deleted_at, verification_state FROM artifacts WHERE artifact_id = ?", grant.target_id);
+    ? await firstRow<{ r2_key: string; filename: string; mime_declared: string; creator_id: string; project_id: string | null; deleted_at: string | null }>(ctx.env.DB, "SELECT r2_key, filename, mime_declared, creator_id, project_id, deleted_at FROM files WHERE file_id = ?", grantedTargetId ?? params["fileId"] ?? "")
+    : await firstRow<{ r2_key: string; version: string; deleted_at: string | null; verification_state: string }>(ctx.env.DB, "SELECT r2_key, version, deleted_at, verification_state FROM artifacts WHERE artifact_id = ?", grantedTargetId ?? params["artifactId"] ?? "");
   if (row === null || row.deleted_at !== null) throw new ApiError({ code: "PERMISSION_DENIED", requestId: ctx.requestId, details: { reason_code: "DELETED_OR_MISSING" } });
-  if (ctx.env.R2 === undefined) throw blocked(ctx.requestId, "R2_NOT_ENABLED");
-  const object = await ctx.env.R2.get(row.r2_key);
-  if (object === null) throw blocked(ctx.requestId, "OBJECT_MISSING");
-  const bytes = new Uint8Array(await object.arrayBuffer());
-  return new Response(bytes, {
+  if (sessionFallback !== null && kind === "file") {
+    const file = row as { creator_id: string; project_id: string | null };
+    const subject = sessionFallback.subject;
+    if (subject.kind !== "owner") {
+      const inProject = file.project_id !== null && sessionFallback.membership.projectIds.includes(file.project_id);
+      if (!inProject && file.creator_id !== subject.id) {
+        const attached = await firstRow<{ room_id: string }>(
+          ctx.env.DB,
+          "SELECT m.room_id FROM message_files mf JOIN messages m ON m.message_id = mf.message_id WHERE mf.file_id = ? LIMIT 1",
+          grantedTargetId ?? "",
+        );
+        if (attached === null || !sessionFallback.membership.roomIds.includes(attached.room_id)) {
+          throw new ApiError({ code: "PERMISSION_DENIED", requestId: ctx.requestId, details: { reason_code: "NOT_ROOM_MEMBER" } });
+        }
+      }
+    }
+  } else if (sessionFallback !== null) {
+    // An artifact's bytes stay owner-only outside a grant.
+    if (sessionFallback.subject.kind !== "owner") {
+      throw new ApiError({ code: "PERMISSION_DENIED", requestId: ctx.requestId, details: { reason_code: "PLATFORM_ADMIN_EXCLUSIVE" } });
+    }
+  }
+  if (storageMode(ctx.env) === "none") throw blocked(ctx.requestId, "R2_NOT_ENABLED");
+  const stored = await storageGet(ctx.env, row.r2_key, ctx.requestId);
+  if (stored === null) throw blocked(ctx.requestId, "OBJECT_MISSING");
+  const bytes = stored.bytes;
+  const mime = kind === "file" ? (stored.contentType ?? (row as { mime_declared?: string }).mime_declared ?? "application/octet-stream") : "application/octet-stream";
+  const inline = mime.startsWith("image/") || mime.startsWith("video/") || mime.startsWith("audio/") || mime === "application/pdf";
+  const filename = kind === "file" ? (row as { filename: string }).filename.replace(/["\\]/g, "_") : `artifact-${grantedTargetId ?? params["artifactId"] ?? "unknown"}`;
+  return new Response(bytes.slice().buffer as ArrayBuffer, {
     status: 200,
     headers: {
-      "content-type": "application/octet-stream",
+      "content-type": mime,
       "content-length": String(bytes.length),
-      "content-disposition": `attachment; filename="${kind === "file" ? (row as { filename: string }).filename.replace(/["\\]/g, "_") : `artifact-${grant.target_id}`}"`,
-      "cache-control": "no-store",
+      "content-disposition": `${inline ? "inline" : "attachment"}; filename="${filename}"`,
+      "cache-control": "private, max-age=300",
       "x-request-id": ctx.requestId,
     },
   });

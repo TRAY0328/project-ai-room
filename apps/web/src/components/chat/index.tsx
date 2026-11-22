@@ -750,6 +750,11 @@ export function Composer({ roomId, agents, onSend, disabled, typing = [], replyT
         >
           <Icon name="send" size={18} />
           <span className="air-send-label">전송</span>
+          {sent ? (
+            <span className="air-send-burst" aria-hidden="true">
+              <i /><i /><i /><i /><i /><i />
+            </span>
+          ) : null}
         </button>
       </div>
 

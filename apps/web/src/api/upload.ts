@@ -5,12 +5,21 @@ export interface UploadIntent {
   upload_url: string;
   part_size?: number;
   expires_at?: string;
+  asset_id?: string;
+  r2_key?: string;
+  storage_state?: string;
+  storage?: "r2" | "gdrive";
+  upload_method?: string;
 }
 
 export interface UploadOutcome {
-  asset_id: string;
-  sha256: string;
-  size: number;
+  upload_id?: string;
+  asset_id?: string;
+  sha256?: string;
+  size_bytes?: number;
+  storage_state?: string;
+  scan_state?: string;
+  download_available?: boolean;
 }
 
 export interface UploadProgress {
@@ -62,79 +71,53 @@ function putChunk(
  * issue a part size, there is nothing to resume from and the UI says so instead
  * of offering a button that cannot work.
  */
+export interface UploadedFile {
+  /** The stored file id (`file_…`) — what a message block references. */
+  fileId: string;
+  filename: string;
+  mime: string;
+  size: number;
+  sha256: string;
+  /** True when the server says the bytes are displayable right now. */
+  ready: boolean;
+}
+
+/**
+ * One-shot chat attachment: intent -> body PUT -> complete. The gateway
+ * verifies the hash server-side and answers with the stored state; an image
+ * comes back ready (the room displays it at once), anything else waits in
+ * quarantine for a scan verdict and the caller says so.
+ */
 export async function uploadFile(
   client: ApiClient,
   file: File,
   options: { onProgress?: (p: UploadProgress) => void } = {},
 ): Promise<ApiResult<UploadOutcome>> {
+  const mime = file.type || "application/octet-stream";
+  const sha256 = await sha256Hex(file);
   const intent = await client.request<UploadIntent>("POST", "/v1/files/upload-intents", {
-    body: { name: file.name, mime: file.type || "application/octet-stream", size: file.size },
+    body: { filename: file.name, mime_type: mime, size_bytes: file.size, sha256 },
   });
   if (!intent.ok) return intent;
 
-  const { upload_id, upload_url, part_size } = intent.data;
-  const partSize = part_size && part_size > 0 ? part_size : file.size;
-  const partCount = Math.max(1, Math.ceil(file.size / partSize));
-  const key = resumeKey(file);
-  let startPart = 0;
-  try {
-    const saved = localStorage.getItem(key);
-    if (saved) {
-      const parsed = JSON.parse(saved) as { uploadId: string; part: number };
-      if (parsed.uploadId === upload_id && partSize < file.size) startPart = Math.min(parsed.part, partCount - 1);
-    }
-  } catch {
-    /* ignore */
-  }
-
-  const etags: string[] = [];
-  let sent = startPart * partSize;
-  for (let part = startPart; part < partCount; part += 1) {
-    const start = part * partSize;
-    const end = Math.min(file.size, start + partSize);
-    const chunk = file.slice(start, end);
-    const headers: Record<string, string> = { "content-type": file.type || "application/octet-stream" };
-    if (partSize < file.size) headers["content-range"] = `bytes ${start}-${end - 1}/${file.size}`;
-    const result = await putChunk(upload_url, chunk, headers, (loaded) => {
-      options.onProgress?.({ sent: start + loaded, total: file.size, partIndex: part, partCount, resumable: partSize < file.size });
-    });
-    if (!result.ok) {
-      try {
-        localStorage.setItem(key, JSON.stringify({ uploadId: upload_id, part }));
-      } catch {
-        /* ignore */
-      }
-      return {
-        ok: false,
-        status: result.status,
-        code: result.status === 0 ? "UPLOAD_INTERRUPTED" : `UPLOAD_HTTP_${result.status}`,
-        message: result.status === 0 ? "업로드가 중단되었습니다 — 이어올리기를 사용할 수 있습니다" : `업로드 실패 (HTTP ${result.status})`,
-        requestId: null,
-        retryable: true,
-      };
-    }
-    etags.push(result.etag ?? `part-${part}`);
-    sent = end;
-    try {
-      localStorage.setItem(key, JSON.stringify({ uploadId: upload_id, part: part + 1 }));
-    } catch {
-      /* ignore */
-    }
-    options.onProgress?.({ sent, total: file.size, partIndex: part, partCount, resumable: partSize < file.size });
-  }
-
-  const sha256 = await sha256Hex(file);
-  const complete = await client.request<UploadOutcome>("POST", `/v1/files/uploads/${encodeURIComponent(upload_id)}/complete`, {
-    body: { parts: etags, sha256, size: file.size },
+  const { upload_id, upload_url } = intent.data;
+  const put = await putChunk(upload_url, file, { "content-type": mime }, (loaded) => {
+    options.onProgress?.({ sent: loaded, total: file.size, partIndex: 0, partCount: 1, resumable: false });
   });
-  if (complete.ok) {
-    try {
-      localStorage.removeItem(key);
-    } catch {
-      /* ignore */
-    }
+  if (!put.ok) {
+    return {
+      ok: false,
+      status: put.status,
+      code: put.status === 0 ? "UPLOAD_INTERRUPTED" : `UPLOAD_HTTP_${put.status}`,
+      message: put.status === 0 ? "업로드가 중단되었습니다 — 다시 시도해 주세요" : `업로드 실패 (HTTP ${put.status})`,
+      requestId: null,
+      retryable: true,
+    };
   }
-  return complete;
+
+  return client.request<UploadOutcome>("POST", `/v1/files/uploads/${encodeURIComponent(upload_id)}/complete`, {
+    body: { parts: [], sha256, byte_count: file.size },
+  });
 }
 
 export function hasResumeState(file: File): boolean {

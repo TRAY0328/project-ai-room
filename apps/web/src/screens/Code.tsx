@@ -414,7 +414,7 @@ export function FilesScreen({ params }: { params: Record<string, string> }) {
       {note ? <Banner tone="info" icon="info">{note}</Banner> : null}
       <div className="air-grid-2">
         <Section title="업로드" sub="SHA-256 계산 후 완료 처리">
-          <FileDropzone uploader={uploader} disabled={!gatewayUrl || demoMode} onUploaded={(outcome) => setNote(`업로드 완료 · ${outcome.asset_id} sha256 ${outcome.sha256.slice(0, 12)}…`)} />
+          <FileDropzone uploader={uploader} disabled={!gatewayUrl || demoMode} onUploaded={(outcome) => setNote(`업로드 완료 · ${outcome.asset_id ?? outcome.upload_id ?? "?"} sha256 ${outcome.sha256?.slice(0, 12) ?? "…"}`)} />
         </Section>
         <Section title="권한 범위" sub="다운로드는 짧은 수명 링크">
           <div style={{ display: "grid", gap: 6 }}>

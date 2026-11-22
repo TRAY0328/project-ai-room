@@ -4,6 +4,7 @@ import { useApp } from "../state/AppState.js";
 import { useResource, relativeTime, listOf } from "../api/hooks.js";
 import { RoomStream, type StreamStatus } from "../api/realtime.js";
 import { newIdempotencyKey } from "../api/client.js";
+import { uploadFile } from "../api/upload.js";
 import type { AgentSummary, MemoryRecordDto, MessageDto, RoomSummary, SearchHitDto } from "../api/types.js";
 import { demoAgents, demoMemory, demoMessages, demoRooms, demoSearchHits } from "../demo/fixtures.js";
 import { normalizeWireMessage, type WireMessage } from "../api/wire.js";
@@ -165,6 +166,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
   const [deleteTarget, setDeleteTarget] = useState<MessageDto | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [gatewayInput, setGatewayInput] = useState(gatewayUrl ?? "");
+  const [uploadingCount, setUploadingCount] = useState(0);
   /* The real loading screen: it watches the gateway probe, the room list, the
      first message page and the realtime channel, and only then lets go. */
   const [splash, setSplash] = useState(() => !splashShownThisLoad);
@@ -177,15 +179,25 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
         demoMode,
         connectionState: connection.state,
         roomsState: rooms.state.kind,
-        messagesState: messagesRes.state.kind,
+        // With no room id yet there is no message page to wait for: the room
+        // list already answered, and an empty (or refused) list is the answer.
+        messagesState: roomId === "" ? "no-room-yet" : messagesRes.state.kind,
         streamState: live.status,
       }),
-    [splash, demoMode, connection.state, rooms.state.kind, messagesRes.state.kind, live.status],
+    [splash, demoMode, connection.state, rooms.state.kind, roomId, messagesRes.state.kind, live.status],
   );
   const splashTargetPercent = splashTarget(splashProgressState);
   const splashStage = splashStageIndex(splashProgressState);
   const splashFinish = useCallback(() => setSplash(false), []);
   const { percent: splashPercent, exiting: splashExiting } = useSplash(splashTargetPercent, splashProgressState.finished, splashFinish, SPLASH_MIN_VISIBLE_MS);
+  /* A stuck step must not hold the door forever: after 12s the room shows its
+     own error states and the splash steps aside. The step's truth is still on
+     screen until then. */
+  useEffect(() => {
+    if (!splash) return;
+    const timer = window.setTimeout(() => setSplash(false), 12000);
+    return () => window.clearTimeout(timer);
+  }, [splash]);
 
   const messages: MessageDto[] = useMemo(() => {
     const merged = [...baseMessages];
@@ -563,6 +575,48 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
     reactions: { ...(m.reactions ?? {}), ...(reactions[m.message_id] ?? {}) },
   }));
 
+  /**
+   * Chat attachments: upload through the real pipeline (intent -> body PUT ->
+   * hash-verified complete) and then speak the file into the room as a message,
+   * so an image shows in the conversation the moment it is stored.
+   */
+  const attachFiles = async (files: File[]) => {
+    const chosen = files.slice(0, 6);
+    if (chosen.length === 0) return;
+    if (demoMode || !gatewayUrl) {
+      setToast("데모에서는 업로드를 서버로 보내지 않습니다");
+      return;
+    }
+    for (const file of chosen) {
+      if (file.size > 25 * 1024 * 1024) {
+        setToast(`${file.name}은(는) 25MB 한도를 넘습니다`);
+        continue;
+      }
+      setUploadingCount((n) => n + 1);
+      setToast(`${file.name} 업로드 중…`);
+      const result = await uploadFile(client, file);
+      setUploadingCount((n) => Math.max(0, n - 1));
+      if (!result.ok) {
+        setToast(`${file.name} 업로드 실패 — ${result.code}: ${result.message}`);
+        continue;
+      }
+      const fileId = result.data.asset_id ?? result.data.upload_id ?? null;
+      if (fileId === null) {
+        setToast(`${file.name}은(는) 저장됐지만 id를 받지 못했습니다`);
+        continue;
+      }
+      const mime = file.type || "application/octet-stream";
+      const url = `/api/v1/files/${encodeURIComponent(fileId)}/content`;
+      const blocks: MessageDto["blocks"] = mime.startsWith("image/")
+        ? [{ type: "image_ref", version: 1, payload: { file_id: fileId, url, alt: file.name, sha256: result.data.sha256 ?? "" } }]
+        : [{ type: "file_ref", version: 1, payload: { file_id: fileId, url, name: file.name, mime, size: file.size, sha256: result.data.sha256 ?? "" } }];
+      await send(blocks, file.name);
+      setToast(result.data.download_available === true
+        ? `${file.name} 업로드·전송 완료`
+        : `${file.name} 업로드 완료 — 검사 전이라 표시가 제한될 수 있습니다 (격리 상태)`);
+    }
+  };
+
   const searchMatches = searchQuery.trim().length === 0
     ? messages.length
     : roomMessagesWithReactions.filter((m) => JSON.stringify(m.blocks).toLowerCase().includes(searchQuery.trim().toLowerCase())).length;
@@ -788,12 +842,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
               onCancelReply={() => setReplyTo(null)}
               typing={[]}
               onOpenPlus={() => setPlusOpen(true)}
-              onAttach={(files) => {
-                const names = files.map((f) => f.name).join(", ");
-                setToast(files.length > 0
-                  ? `첨부 ${files.length}개 선택됨 (${names}) — 파일 업로드는 서버 스토리지 활성화 후 가능합니다`
-                  : "첨부할 파일을 고르지 않았습니다");
-              }}
+              onAttach={(files) => void attachFiles(files)}
             />
           </div>
 
@@ -828,7 +877,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
               onChange={(e) => {
                 const files = Array.from(e.target.files ?? []);
                 setPlusOpen(false);
-                if (files.length > 0) setToast(`사진 ${files.length}장 선택됨 — 파일 업로드는 서버 스토리지 활성화 후 가능합니다`);
+                if (files.length > 0) void attachFiles(files);
                 e.currentTarget.value = "";
               }}
             />
@@ -845,7 +894,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
               onChange={(e) => {
                 const files = Array.from(e.target.files ?? []);
                 setPlusOpen(false);
-                if (files.length > 0) setToast(`파일 ${files.length}개 선택됨 — 파일 업로드는 서버 스토리지 활성화 후 가능합니다`);
+                if (files.length > 0) void attachFiles(files);
                 e.currentTarget.value = "";
               }}
             />
@@ -869,7 +918,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
         </div>
         <p className="air-sheet-note">
           코드 블록·작업 목록은 입력창에 초안으로 들어갑니다 — 보내기 전에 다듬을 수 있어요.
-          파일 업로드는 서버 스토리지(R2)가 켜진 뒤에 전송됩니다.
+          사진·파일은 실제 서버에 업로드되고 해시 검증 후 방에 메시지로 전송됩니다.
         </p>
       </ChatSheet>
 

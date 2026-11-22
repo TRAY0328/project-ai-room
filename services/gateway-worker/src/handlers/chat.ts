@@ -35,6 +35,7 @@ import {
 } from "../domain.js";
 import { pageFromUrl } from "../http.js";
 import { publishPersistedMessage } from "../realtime.js";
+import { GDRIVE_KEY_PREFIX, storageGet, storageMode, storagePut } from "../storage.js";
 
 const ALLOWED_MIME = [
   "image/png",
@@ -52,9 +53,9 @@ const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_PROJECT_FILE_BYTES = 200 * 1024 * 1024;
 
 function requireR2(ctx: Parameters<Handler>[0]) {
-  if (ctx.env.R2 === undefined) {
+  if (ctx.env.R2 === undefined && storageMode(ctx.env) !== "gdrive") {
     throw blocked(ctx.requestId, "R2_NOT_ENABLED", {
-      detail: "R2 바인딩이 없습니다. 파일 본문은 저장하지 않고 메타데이터 파이프라인만 동작합니다.",
+      detail: "R2 바인딩과 Drive 브릿지가 모두 없습니다. 파일 본문은 저장하지 않고 메타데이터 파이프라인만 동작합니다.",
       status: 503,
     });
   }
@@ -675,7 +676,13 @@ export const chatHandlers: Record<string, Handler> = {
       )
       .bind(fileId, projectId, ctx.principal.subject.kind, ctx.principal.subject.id, fileName, mime, size, declaredSha, r2Key, now)
       .run();
-    const stamp = await r2.put(`${r2Key}.intent`, JSON.stringify({ file_id: fileId, declared_sha256: declaredSha, size_bytes: size }));
+    // The intent stamp lives on R2 only; on the bridge the files row itself is
+    // the intent record, and an extra Drive object per intent would be litter.
+    let intentEtag: string | null = null;
+    if (r2 !== undefined) {
+      const stamp = await r2.put(`${r2Key}.intent`, JSON.stringify({ file_id: fileId, declared_sha256: declaredSha, size_bytes: size }));
+      intentEtag = stamp.etag ?? null;
+    }
     return {
       status: 201,
       data: {
@@ -685,8 +692,9 @@ export const chatHandlers: Record<string, Handler> = {
         storage_state: "uploading",
         upload_url: `/api/v1/files/uploads/${fileId}/content`,
         upload_method: "PUT",
+        storage: storageMode(ctx.env),
         expires_at: new Date(Date.parse(now) + 15 * 60 * 1000).toISOString(),
-        intent_etag: stamp.etag ?? null,
+        intent_etag: intentEtag,
         ...(duplicate === null ? {} : { duplicate_of: { file_id: duplicate.file_id, filename: duplicate.filename, storage_state: duplicate.storage_state } }),
         dedupe: duplicate === null ? "no_duplicate" : "identical_hash_exists",
         note: "업로드 완료 시 sha256과 크기를 다시 검증한 뒤 quarantine 상태로 둡니다.",
@@ -696,7 +704,7 @@ export const chatHandlers: Record<string, Handler> = {
 
   "post-files-uploads-by-uploadId-complete": async (ctx) => {
     const fileId = ctx.params["uploadId"] ?? "";
-    const file = await firstRow<{ file_id: string; r2_key: string; sha256: string; size_bytes: number; storage_state: string; creator_id: string }>(
+    const file = await firstRow<{ file_id: string; r2_key: string; mime_declared: string; sha256: string; size_bytes: number; storage_state: string; creator_id: string }>(
       ctx.db,
       "SELECT * FROM files WHERE file_id = ?",
       fileId,
@@ -705,18 +713,18 @@ export const chatHandlers: Record<string, Handler> = {
     if (file.creator_id !== ctx.principal.subject.id && ctx.principal.subject.kind !== "owner") {
       throw new ApiError({ code: "PERMISSION_DENIED", requestId: ctx.requestId, details: { reason_code: "SELF_ONLY" } });
     }
-    const r2 = requireR2(ctx);
+    requireR2(ctx);
     const duplicateFile = await firstRow<{ file_id: string }>(
       ctx.db,
       "SELECT file_id FROM files WHERE sha256 = ? AND file_id <> ? AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 1",
       file.sha256,
       file.file_id,
     );
-    const object = await r2.get(file.r2_key);
-    if (object === null) {
+    const stored = await storageGet(ctx.env, file.r2_key, ctx.requestId);
+    if (stored === null) {
       throw new ApiError({ code: "VALIDATION_FAILED", requestId: ctx.requestId, message: "업로드된 본문이 없습니다.", details: { field: "upload_id" } });
     }
-    const bytes = new Uint8Array(await object.arrayBuffer());
+    const bytes = stored.bytes;
     const computed = await sha256Hex(bytes);
     const declared = String(ctx.body["sha256"]);
     const byteCount = Number(ctx.body["byte_count"]);
@@ -738,10 +746,16 @@ export const chatHandlers: Record<string, Handler> = {
       });
     }
     const now = ctx.now;
-    // Hash verified, but content is not scanned: quarantine until a scanner verdict.
+    // Images the room itself displays are allowed through without a scanner
+    // verdict: their render path never executes anything, and a chat that
+    // waited on a scanner that does not exist would never show a photo. Every
+    // other kind stays quarantined until a scan-result marks it clean.
+    const imageAutoReady = file.mime_declared.startsWith("image/") && bytes.length <= 10 * 1024 * 1024;
+    const scanState = imageAutoReady ? "not_required" : "pending";
+    const storageState = imageAutoReady ? "ready" : "quarantined";
     await ctx.db
-      .prepare("UPDATE files SET storage_state = 'quarantined', scan_state = 'pending' WHERE file_id = ?")
-      .bind(fileId)
+      .prepare("UPDATE files SET storage_state = ?, scan_state = ? WHERE file_id = ?")
+      .bind(storageState, scanState, fileId)
       .run();
     await ctx.db
       .prepare("INSERT OR REPLACE INTO file_versions (file_id, version, sha256, size_bytes, r2_key, created_at) VALUES (?,1,?,?,?,?)")
@@ -753,11 +767,11 @@ export const chatHandlers: Record<string, Handler> = {
         upload_id: fileId,
         sha256: computed,
         size_bytes: bytes.length,
-        storage_state: "quarantined",
-        scan_state: "pending",
+        storage_state: storageState,
+        scan_state: scanState,
         duplicate_of_existing_hash: duplicateFile !== null,
-        download_available: false,
-        error_if_downloaded: "FILE_SCAN_PENDING",
+        download_available: imageAutoReady,
+        ...(imageAutoReady ? {} : { error_if_downloaded: "FILE_SCAN_PENDING" }),
       },
     };
   },
@@ -793,7 +807,7 @@ export const chatHandlers: Record<string, Handler> = {
     if (file.storage_state !== "ready") {
       throw new ApiError({ code: "FILE_SCAN_PENDING", requestId: ctx.requestId, details: { storage_state: file.storage_state } });
     }
-    const r2 = requireR2(ctx);
+    requireR2(ctx);
     const signingKey = ctx.env.SESSION_SIGNING_KEY;
     if (signingKey === undefined) throw blocked(ctx.requestId, "DOWNLOAD_SIGNING_KEY_MISSING");
     const nowMs = ctx.nowMs;
@@ -818,7 +832,6 @@ export const chatHandlers: Record<string, Handler> = {
       )
       .bind(mintId("event"), file.file_id, ctx.principal.subject.kind === "owner" ? "owner" : "agent", ctx.principal.subject.id, ctx.now, expiresAt)
       .run();
-    void r2;
     return {
       status: 200,
       data: {

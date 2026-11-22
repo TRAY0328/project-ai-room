@@ -90,6 +90,9 @@ export interface Env {
   readonly OWNER_PASSWORD_VERIFIER?: string;
   readonly GITHUB_WEBHOOK_SECRET?: string;
   readonly GITHUB?: GitHubClient;
+  /** Google Drive bridge (Apps Script) for file bytes when R2 is not bound. */
+  readonly GDRIVE_BRIDGE_URL?: string;
+  readonly GDRIVE_BRIDGE_SECRET?: string;
   /** Fixed clock for deterministic tests; production leaves it unset. */
   readonly NOW_MS?: number;
   /** In-memory presence reported by room-do for M-04/M-45 (optional). */
