@@ -23,7 +23,7 @@ function useRooms() {
 /* ----------------------------------------------------------------- MAINCHAT */
 
 export function MainChatScreen({ navigate }: { navigate: Navigate }) {
-  const { client, gatewayUrl, demoMode, outbox, enqueueMessage, flushOutbox, connection, self } = useApp();
+  const { client, gatewayUrl, demoMode, outbox, enqueueMessage, flushOutbox, connection, self, renewSession } = useApp();
   const rooms = useRooms();
   // No placeholder room id: until the room list arrives there is nothing to
   // read or write, and guessing "room-default" only produced a 403 and a
@@ -90,6 +90,10 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
         // snapshot. That is the normal path, not a warning the user must read.
         if (!/no_cursor|snapshot/i.test(reason)) setToast(`실시간 순서 공백 감지(${reason}) — 서버에서 다시 불러왔습니다`);
       },
+      // The socket dies with the session (or refuses the upgrade): extend the
+      // session first and reconnect with the same cursor, instead of asking the
+      // user to sign in again every 30 minutes.
+      onAuthExpired: async () => (await renewSession()) === "renewed",
     });
     streamRef.current = stream;
     stream.connect(messages.at(-1)?.room_seq ?? null);
@@ -98,11 +102,27 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
       streamRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gatewayUrl, demoMode, roomId, client]);
+  }, [gatewayUrl, demoMode, roomId, client, renewSession]);
 
   useEffect(() => {
     setRealtimeMessages([]);
   }, [roomId]);
+
+  // A hidden tab is throttled (its ping can miss the server's 45 s heartbeat
+  // window) or frozen outright. Returning to the tab repairs the socket at once
+  // rather than after a backoff, so "실시간 수신 중" is honest when it is read.
+  useEffect(() => {
+    const wake = () => streamRef.current?.ensureConnected();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") wake();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", wake);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", wake);
+    };
+  }, []);
 
   const room = rooms.list.find((r) => r.room_id === roomId) ?? null;
   const roomReady = room !== null;

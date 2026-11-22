@@ -17,6 +17,12 @@ export interface RoomStreamOptions {
   /** Called when the server says the client must refetch (gap / unknown version). */
   onResync: (reason: string) => void;
   onStatus: (status: StreamStatus, detail?: string) => void;
+  /**
+   * Called once per disconnect before reconnecting when the close looks like an
+   * expired session (1008 expired/revoked, 4401/4403, or an abnormal 1006 where
+   * the upgrade was refused). Resolve true when the session was renewed.
+   */
+  onAuthExpired?: () => Promise<boolean>;
   /** Tests inject a WebSocket implementation. */
   WebSocketImpl?: typeof WebSocket;
   maxRetries?: number;
@@ -47,6 +53,9 @@ export class RoomStream {
   private lastSeq: number | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
+  /** One renewal attempt per outage: a live socket clears it again. */
+  private renewTried = false;
+  private renewing = false;
   private readonly options: RoomStreamOptions;
   private readonly WS: typeof WebSocket;
 
@@ -79,6 +88,7 @@ export class RoomStream {
 
     socket.onopen = () => {
       this.retries = 0;
+      this.renewTried = false;
       this.options.onStatus("live");
       // Presence is kept alive by a real frame: the DO drops a socket that has
       // been silent past its heartbeat window, and an idle reader is not dead.
@@ -145,6 +155,21 @@ export class RoomStream {
         this.options.onStatus("closed");
         return;
       }
+      const reason = String(event.reason ?? "");
+      const authClose =
+        event.code === 4401 ||
+        event.code === 4403 ||
+        (event.code === 1008 && /expired|revoked/i.test(reason)) ||
+        // A refused upgrade reaches the browser as an abnormal close, with no
+        // handshake to read: that is exactly the "session died" case.
+        event.code === 1006;
+      if (authClose && !this.renewTried && this.options.onAuthExpired !== undefined) {
+        this.renewTried = true;
+        this.renewing = true;
+        this.options.onStatus("reconnecting", "세션 연장 후 재연결 중");
+        void this.renewThenReconnect();
+        return;
+      }
       if (event.code === 4401 || event.code === 4403) {
         this.options.onStatus("error", `인증 거부(code ${event.code})`);
         return;
@@ -164,6 +189,41 @@ export class RoomStream {
     };
   }
 
+  private async renewThenReconnect(): Promise<void> {
+    let renewed = false;
+    try {
+      renewed = (await this.options.onAuthExpired?.()) ?? false;
+    } catch {
+      renewed = false;
+    }
+    this.renewing = false;
+    if (this.closedByUser) return;
+    if (renewed) {
+      // The new session cookie is already in the jar: reconnect at once, with the
+      // same cursor, so nothing is re-read and no message is skipped.
+      this.retries = 0;
+      if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+      this.connect(this.lastSeq);
+      return;
+    }
+    this.options.onStatus("error", "세션이 만료되었습니다 — 다시 로그인하세요");
+  }
+
+  /**
+   * Reconnect now if the socket is not live. A tab in the background is
+   * throttled (its ping can miss the server's heartbeat window) and may be
+   * frozen outright; both are repaired here the moment it is looked at again.
+   */
+  ensureConnected(): void {
+    if (this.closedByUser || this.renewing) return;
+    if (this.ws !== null && (this.ws.readyState === 0 || this.ws.readyState === 1)) return;
+    if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.retries = 0;
+    this.connect(this.lastSeq);
+  }
+
   private stopPing(): void {
     if (this.pingTimer) clearInterval(this.pingTimer);
     this.pingTimer = null;
@@ -171,6 +231,7 @@ export class RoomStream {
 
   close(): void {
     this.closedByUser = true;
+    this.renewing = false;
     this.stopPing();
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;

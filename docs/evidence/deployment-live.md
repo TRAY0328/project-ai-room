@@ -125,3 +125,15 @@ Worker와 D1은 `up`이다. 이 상태를 `ok`로 바꾸지 않는다.
 - R2 비활성 → 파일 본문 경로는 `R2_NOT_ENABLED` (G-10의 일부 차단 유지)
 - 실제 AI 제공자 키 없음 → 다중 AI 협업 시연 없음 (G-02/G-03 차단 유지)
 - GitHub 리포지토리 미생성(Pickle 연결에 저장소 생성 권한 없음) → Actions 실행 증거 없음 (G-04 차단)
+
+---
+
+## 6. 추가 배포 — 세션 자동 연장 (2026-11-22)
+
+- 시각(UTC): 2026-11-22T01:58Z 이후 2회 (02:03Z, 02:10Z 부근)
+- 배포한 소스: `main` 커밋 `c0a8e2a` 작업 트리
+- `wrangler deploy` → `Current Version ID: 53a926f5-35b4-499f-a84e-a04edb989976`
+- 변경: `POST /api/v1/auth/refresh`가 `air_refresh` HttpOnly 쿠키만으로 세션을 연장(기존에는 본문
+  `refresh_token` 필수여서 브라우저가 연장 불가), 연장 거절 시 만료 쿠키 반환, 웹 클라이언트의
+  백그라운드 자동 연장·WebSocket 연장 후 재연결·탭 간 단일 회전(Web Locks) 추가.
+- 실측: `docs/evidence/session-renewal.md` (API·WebSocket E2E PASS, 실제 브라우저 4단계 PASS)

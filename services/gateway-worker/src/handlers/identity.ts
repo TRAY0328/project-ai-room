@@ -131,8 +131,22 @@ export const identityHandlers: Record<string, Handler> = {
   },
 
   "post-auth-refresh": async (ctx) => {
-    const session = await ctx.auth.refresh(String(ctx.body["refresh_token"]), ctx.requestId);
-    return { status: 200, data: { session } };
+    // A browser never sees the refresh token: it is the HttpOnly `air_refresh`
+    // cookie, so a cookie-only request has to renew the same session it kept
+    // across reloads. An API client may still present the token in the body.
+    const token = optionalString(ctx.body, "refresh_token") ?? readCookie(ctx.headers.get("cookie"), REFRESH_COOKIE);
+    if (token === null) {
+      throw new ApiError({
+        code: "AUTH_REQUIRED",
+        requestId: ctx.requestId,
+        message: "연장할 세션이 없습니다 — air_refresh 쿠키나 refresh_token이 필요합니다.",
+        details: { field: "refresh_token" },
+      });
+    }
+    const session = await ctx.auth.refresh(token, ctx.requestId);
+    // The refresh token rotates on every use; the response cookies (set by the
+    // pipeline) carry the new pair, so the next renewal uses the new value.
+    return { status: 200, data: { session, renewed_at: ctx.now } };
   },
 
   "post-agents-register": async (ctx) => {

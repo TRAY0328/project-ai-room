@@ -12,6 +12,21 @@ import { setup, BOOTSTRAP_SECRET, INVITE_SECRET } from "./helpers.mjs";
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
+/** The cookies a browser would keep from one response (Set-Cookie → jar). */
+function jarFrom(headers) {
+  const jar = new Map();
+  for (const raw of headers.getSetCookie?.() ?? []) {
+    const [pair] = raw.split(";");
+    const [name, ...value] = pair.split("=");
+    jar.set(name.trim(), decodeURIComponent(value.join("=")));
+  }
+  return jar;
+}
+
+function cookieHeader(jar) {
+  return [...jar.entries()].map(([name, value]) => `${name}=${encodeURIComponent(value)}`).join("; ");
+}
+
 test("owner bootstrap is one-shot and never public", async () => {
   const { call, close } = await setup();
   try {
@@ -82,6 +97,69 @@ test("refresh rotation detects reuse and revokes the session", async () => {
     const afterReuse = await call("GET", "/api/v1/rooms", { token: newAccess });
     assert.equal(afterReuse.status, 401);
     assert.equal(afterReuse.json.error.code, "AUTH_REVOKED");
+  } finally {
+    close();
+  }
+});
+
+test("the browser's HttpOnly refresh cookie renews the session and re-issues both cookies", async () => {
+  const { call, close } = await setup();
+  try {
+    const login = await call("POST", "/api/v1/auth/login", { body: { email: "owner@example.test", password: "correct-horse-battery-staple" } });
+    const jar = jarFrom(login.headers);
+    assert.ok(jar.has("air_session"), "login must set the access cookie");
+    assert.ok(jar.has("air_refresh"), "login must set the refresh cookie");
+
+    // The cookie alone authenticates a normal request.
+    const before = await call("GET", "/api/v1/rooms", { headers: { cookie: cookieHeader(jar) } });
+    assert.equal(before.status, 200, before.text);
+
+    // No body: the browser cannot read the HttpOnly refresh token, so the cookie is
+    // the only thing it can present. This used to fail validation (400).
+    const renewed = await call("POST", "/api/v1/auth/refresh", { body: {}, headers: { cookie: cookieHeader(jar) } });
+    assert.equal(renewed.status, 200, renewed.text);
+    const rotated = jarFrom(renewed.headers);
+    assert.ok(rotated.has("air_session"), "renewal must set a fresh access cookie");
+    assert.ok(rotated.has("air_refresh"), "renewal must rotate the refresh cookie");
+    assert.notEqual(rotated.get("air_refresh"), jar.get("air_refresh"));
+    assert.notEqual(rotated.get("air_session"), jar.get("air_session"));
+    assert.ok(
+      Date.parse(renewed.json.data.session.access_expires_at) > Date.parse(before.json.server_time),
+      "the renewed access token must expire in the future",
+    );
+
+    // The new pair is what the browser keeps: it authenticates on its own.
+    const after = await call("GET", "/api/v1/rooms", { headers: { cookie: cookieHeader(rotated) } });
+    assert.equal(after.status, 200, after.text);
+
+    // `/v1/auth/refresh` is the documented spelling of the same route.
+    const alias = await call("POST", "/v1/auth/refresh", { body: {}, headers: { cookie: cookieHeader(rotated) } });
+    assert.equal(alias.status, 200, alias.text);
+  } finally {
+    close();
+  }
+});
+
+test("a renewal with no session is refused and clears the dead cookies", async () => {
+  const { call, close } = await setup();
+  try {
+    const anonymous = await call("POST", "/api/v1/auth/refresh", { body: {} });
+    assert.equal(anonymous.status, 401);
+    assert.equal(anonymous.json.error.code, "AUTH_REQUIRED");
+    const cleared = anonymous.headers.getSetCookie?.() ?? [];
+    assert.ok(cleared.some((cookie) => cookie.startsWith("air_session=") && /Max-Age=0/.test(cookie)));
+
+    const login = await call("POST", "/api/v1/auth/login", { body: { email: "owner@example.test", password: "correct-horse-battery-staple" } });
+    const jar = jarFrom(login.headers);
+    const logout = await call("POST", "/api/v1/auth/logout", { body: {}, headers: { cookie: cookieHeader(jar) } });
+    assert.equal(logout.status, 200, logout.text);
+
+    // A logged-out session cannot be renewed, and the browser is told to drop it.
+    const dead = await call("POST", "/api/v1/auth/refresh", { body: {}, headers: { cookie: cookieHeader(jar) } });
+    assert.equal(dead.status, 401);
+    assert.equal(dead.json.error.code, "AUTH_REVOKED");
+    const clearedAfterLogout = dead.headers.getSetCookie?.() ?? [];
+    assert.ok(clearedAfterLogout.some((cookie) => cookie.startsWith("air_refresh=") && /Max-Age=0/.test(cookie)));
   } finally {
     close();
   }

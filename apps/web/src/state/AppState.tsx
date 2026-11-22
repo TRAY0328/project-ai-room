@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiClient, newIdempotencyKey } from "../api/client.js";
+import { SessionKeeper, type RenewOutcome } from "../api/session.js";
 import type { MessageDto, OwnerSessionDto } from "../api/types.js";
 import type { WireMessage } from "../api/wire.js";
 
@@ -34,6 +35,13 @@ interface AppContextValue {
   setGatewayUrl: (url: string | null) => void;
   connection: { state: ConnectionState; detail: string; checkedAt: number | null };
   refreshConnection: () => Promise<void>;
+  /**
+   * Extends the cookie session in the background. The realtime stream calls it
+   * before reconnecting after an auth close; 401s in the API client call it too.
+   */
+  renewSession: () => Promise<RenewOutcome>;
+  /** Records when the access cookie dies, so the renewal timer aims at it. */
+  noteSessionExpiry: (accessExpiresAt?: string | null) => void;
   session: OwnerSessionDto | null;
   setSession: (session: OwnerSessionDto | null) => void;
   /**
@@ -146,16 +154,48 @@ export function AppStateProvider({ children, initialGateway = null }: { children
   const [agentSelf, setAgentSelfState] = useState<{ agent_id: string; display_name: string } | null>(null);
   const [lastFlush, setLastFlush] = useState<{ at: number; sent: number; failed: number } | null>(null);
   const flushing = useRef(false);
-
-  const client = useMemo(
-    () => new ApiClient({ baseUrl: gatewayUrl, onUnauthorized: () => setConnection((prev) => (prev.state === "ready" ? { state: "unauthenticated", detail: "세션이 만료되었습니다 — 다시 로그인하세요", checkedAt: Date.now() } : prev)) }),
-    [gatewayUrl],
-  );
+  /** Read by the session keeper, which must not re-create on every render. */
+  const connectionRef = useRef<{ state: ConnectionState; detail: string; checkedAt: number | null }>(connection);
+  connectionRef.current = connection;
+  const sessionRef = useRef<OwnerSessionDto | null>(session);
+  sessionRef.current = session;
 
   const setSession = useCallback((next: OwnerSessionDto | null) => {
     setSessionState(next);
     writeStorage(OWNER_KEY, next === null ? null : JSON.stringify({ owner_id: next.owner_id, display_name: next.display_name, email: next.email ?? undefined, role: "owner" }));
   }, []);
+
+  /**
+   * One keeper per gateway. It renews the cookie session before it expires and
+   * only reports "logged out" when the server itself refuses the renewal.
+   */
+  const keeper = useMemo(
+    () =>
+      new SessionKeeper({
+        baseUrl: () => gatewayUrl,
+        // Renew unless the app already knows the visitor is signed out. A tab
+        // opened after the access token died has no local hint yet, so "checking"
+        // must still be allowed to try once; a refused renewal then settles it.
+        canRenew: () => sessionRef.current !== null || connectionRef.current.state !== "unauthenticated",
+        onRenewed: () => setConnection((prev) => (prev.state === "ready" ? { ...prev, detail: "게이트웨이 정상 · 세션 자동 연장됨", checkedAt: Date.now() } : prev)),
+        onExpired: (detail) => {
+          setSessionState(null);
+          writeStorage(OWNER_KEY, null);
+          setConnection({ state: "unauthenticated", detail: `세션이 만료되었습니다 — 다시 로그인하세요 (${detail})`, checkedAt: Date.now() });
+        },
+      }),
+    [gatewayUrl],
+  );
+
+  const client = useMemo(
+    () =>
+      new ApiClient({
+        baseUrl: gatewayUrl,
+        renewSession: async () => (await keeper.renew("http-401")) === "renewed",
+        onUnauthorized: () => setConnection((prev) => (prev.state === "ready" ? { state: "unauthenticated", detail: "세션이 만료되었습니다 — 다시 로그인하세요", checkedAt: Date.now() } : prev)),
+      }),
+    [gatewayUrl, keeper],
+  );
 
   const setAgentSelf = useCallback((next: { agent_id: string; display_name: string } | null) => {
     setAgentSelfState(next);
@@ -218,6 +258,36 @@ export function AppStateProvider({ children, initialGateway = null }: { children
     const timer = setInterval(() => void refreshConnection(), 45000);
     return () => clearInterval(timer);
   }, [refreshConnection]);
+
+  // Renewal runs only while a session is actually known to be alive; a signed-out
+  // visitor gets no refresh traffic.
+  useEffect(() => {
+    if (connection.state === "ready") {
+      keeper.start();
+      return () => keeper.stop();
+    }
+    keeper.stop();
+    return undefined;
+  }, [connection.state, keeper]);
+
+  // A background tab is throttled or frozen, so its timer may simply be late.
+  // Coming back into view (or back online) is the moment to catch up.
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const wake = () => void keeper.renewIfStale();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") wake();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", wake);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", wake);
+    };
+  }, [keeper]);
+
+  const renewSession = useCallback(() => keeper.renew("client"), [keeper]);
+  const noteSessionExpiry = useCallback((accessExpiresAt?: string | null) => keeper.noteLogin(accessExpiresAt), [keeper]);
 
   useEffect(() => {
     writeStorage(OUTBOX_KEY, JSON.stringify(outbox));
@@ -293,8 +363,8 @@ export function AppStateProvider({ children, initialGateway = null }: { children
   }, []);
 
   const value = useMemo<AppContextValue>(
-    () => ({ client, gatewayUrl, setGatewayUrl, connection, refreshConnection, session, setSession, self, setAgentSelf, demoMode, setDemoMode, outbox, enqueueMessage, flushOutbox, retryOutbox, discardOutbox, lastFlush }),
-    [client, gatewayUrl, setGatewayUrl, connection, refreshConnection, session, setSession, self, setAgentSelf, demoMode, setDemoMode, outbox, enqueueMessage, flushOutbox, retryOutbox, discardOutbox, lastFlush],
+    () => ({ client, gatewayUrl, setGatewayUrl, connection, refreshConnection, renewSession, noteSessionExpiry, session, setSession, self, setAgentSelf, demoMode, setDemoMode, outbox, enqueueMessage, flushOutbox, retryOutbox, discardOutbox, lastFlush }),
+    [client, gatewayUrl, setGatewayUrl, connection, refreshConnection, renewSession, noteSessionExpiry, session, setSession, self, setAgentSelf, demoMode, setDemoMode, outbox, enqueueMessage, flushOutbox, retryOutbox, discardOutbox, lastFlush],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

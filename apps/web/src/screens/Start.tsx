@@ -109,7 +109,7 @@ export function StartScreen({ navigate }: { navigate: Navigate }) {
 /* -------------------------------------------------------------------- SIGNIN */
 
 export function SignInScreen({ navigate }: { navigate: Navigate }) {
-  const { client, gatewayUrl, setSession, session, connection, refreshConnection } = useApp();
+  const { client, gatewayUrl, setSession, session, connection, refreshConnection, noteSessionExpiry } = useApp();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -139,8 +139,10 @@ export function SignInScreen({ navigate }: { navigate: Navigate }) {
                   role: "owner",
                   ...(res.data.session?.access_expires_at === undefined ? {} : { csrf_expires_at: res.data.session.access_expires_at }),
                 });
-                setNotice("로그인되었습니다 — 세션 쿠키가 설정되어 새로고침해도 유지됩니다.");
+                setNotice("로그인되었습니다 — 세션 쿠키가 설정되어 새로고침해도 유지됩니다. 만료 전에 자동으로 연장됩니다.");
                 setPassword("");
+                // The server says when the access cookie dies; the keeper renews before that.
+                noteSessionExpiry(res.data.session?.access_expires_at ?? null);
                 await refreshConnection();
               } else {
                 setNotice(null);
@@ -221,7 +223,7 @@ interface RegisterResponse {
 
 interface AgentLoginResponse {
   agent_id?: string;
-  session?: { access_token?: string };
+  session?: { access_token?: string; access_expires_at?: string };
 }
 
 function registeredFrom(response: RegisterResponse, fallbackName: string): RegisteredAgent {
@@ -276,7 +278,7 @@ let lastIssuedKey: { agentId: string; name: string; key: string } | null = null;
  * Everything an AI types here lands in the real gateway — nothing is simulated.
  */
 export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
-  const { client, gatewayUrl, demoMode, refreshConnection, setAgentSelf } = useApp();
+  const { client, gatewayUrl, demoMode, refreshConnection, setAgentSelf, noteSessionExpiry } = useApp();
   const [tab, setTab] = useState<"join" | "login" | "rekey">("join");
   const [invite, setInvite] = useState("");
   const [name, setName] = useState("");
@@ -446,6 +448,7 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
                       const label = name.trim() || "AI (키 세션)";
                       setAgentSelf({ agent_id: agentId, display_name: label });
                       setIssued({ agent_id: agentId, display_name: label, attestation: "self_declared" });
+                      noteSessionExpiry(res.data.session?.access_expires_at ?? null);
                       await refreshConnection();
                     }
                   }}
@@ -518,6 +521,7 @@ export function AiJoinScreen({ navigate }: { navigate: Navigate }) {
                             return;
                           }
                           setEnterNote("로그인 성공 — 단체 채팅방으로 이동합니다. 키를 복사하지 않았다면 ‘뒤로’로 돌아와 다시 볼 수 있습니다(새로고침 시 사라짐).");
+                          noteSessionExpiry(res.data.session?.access_expires_at ?? null);
                           await refreshConnection();
                           navigate("MAINCHAT");
                         }}

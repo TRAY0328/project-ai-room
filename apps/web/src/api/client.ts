@@ -31,6 +31,12 @@ export interface ApiClientOptions {
   /** Tests inject a fetch; the browser uses the global. */
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /**
+   * Session renewal. Called once when a request answers 401, before the caller is
+   * told it is unauthenticated: an expired access cookie is an ordinary event
+   * after 30 minutes, not a logout. Returning true means "retry the request".
+   */
+  renewSession?: () => Promise<boolean>;
   onUnauthorized?: () => void;
 }
 
@@ -38,12 +44,14 @@ export class ApiClient {
   private readonly explicitBase: string | null;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly renewSession?: () => Promise<boolean>;
   private readonly onUnauthorized?: () => void;
 
   constructor(options: ApiClientOptions) {
     this.explicitBase = options.baseUrl;
     this.fetchImpl = options.fetchImpl ?? ((...args) => fetch(...args));
     this.timeoutMs = options.timeoutMs ?? 15000;
+    this.renewSession = options.renewSession;
     this.onUnauthorized = options.onUnauthorized;
   }
 
@@ -70,7 +78,7 @@ export class ApiClient {
     }
   }
 
-  async request<T>(method: string, path: string, options: { body?: unknown; idempotencyKey?: string; signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<ApiResult<T>> {
+  async request<T>(method: string, path: string, options: { body?: unknown; idempotencyKey?: string; signal?: AbortSignal; headers?: Record<string, string>; afterRenewal?: boolean } = {}): Promise<ApiResult<T>> {
     const base = this.baseUrl;
     if (!base) {
       return { ok: false, status: 0, code: "GATEWAY_NOT_CONFIGURED", message: "게이트웨이 URL이 설정되지 않았습니다 (운영 설정 → 게이트웨이 URL).", requestId: null, retryable: false };
@@ -106,6 +114,13 @@ export class ApiClient {
         }
       }
       if (!response.ok) {
+        // One renewal per request: the access cookie dies every 30 minutes, and
+        // the caller should not have to know that. A 401 that survives the
+        // renewal is a real logout and is reported as one.
+        if (response.status === 401 && options.afterRenewal !== true && this.renewSession !== undefined) {
+          const renewed = await this.renewSession();
+          if (renewed) return this.request<T>(method, path, { ...options, afterRenewal: true });
+        }
         if (response.status === 401) this.onUnauthorized?.();
         const envelope = extractError(payload);
         return {

@@ -295,6 +295,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     return jsonResponse(body, 404, requestId);
   }
 
+  let operationIdForError: string | null = null;
   try {
     const match = matchRoute(API_CATALOG, method, url.pathname);
     if (match === null) {
@@ -304,6 +305,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       return jsonResponse(body, 404, requestId);
     }
     const { endpoint, params } = match;
+    operationIdForError = endpoint.operationId;
     const handler = HANDLERS[endpoint.operationId];
     if (handler === undefined) {
       // A catalog entry without a handler is a build defect, not a client error.
@@ -516,7 +518,10 @@ export async function handle(request: Request, env: Env): Promise<Response> {
           /* audit failure must not mask the response */
         }
       }
-      return jsonResponse(error.toResponse(), error.httpStatus, requestId);
+      // A renewal that the server refuses means the session is really gone, so the
+      // browser must drop its dead cookies instead of retrying them forever.
+      const failureCookies = operationIdForError === "post-auth-refresh" && error.httpStatus === 401 ? clearedSessionCookies({ secure: url.protocol === "https:" }) : [];
+      return jsonResponse(error.toResponse(), error.httpStatus, requestId, {}, failureCookies);
     }
     const message = error instanceof Error ? error.message : "unknown";
     console.error(JSON.stringify({ request_id: requestId, error: message.slice(0, 400) }));

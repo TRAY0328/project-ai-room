@@ -107,7 +107,9 @@ export const BODY_SCHEMAS = {
     .strict(),
   "post-auth-login": z.object({ email: z.string().email().max(254), password: z.string().min(1).max(256) }).strict(),
   "post-auth-logout": z.object({ refresh_token: z.string().min(8).max(512).optional() }).strict(),
-  "post-auth-refresh": z.object({ refresh_token: z.string().min(8).max(512) }).strict(),
+  // A browser holds the refresh token in the HttpOnly `air_refresh` cookie and
+  // cannot read it, so the body is optional: the handler falls back to the cookie.
+  "post-auth-refresh": z.object({ refresh_token: z.string().min(8).max(512).optional() }).strict(),
   "post-agents-register": z
     .object({
       invite_secret: z.string().min(8).max(256),
