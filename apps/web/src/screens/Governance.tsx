@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Badge, Banner, Button, Card, Dialog, Field, Icon, Reveal, SectionHeader, Select, TextInput } from "@ai-room/design-system";
 import { useApp } from "../state/AppState.js";
 import { useResource } from "../api/hooks.js";
+import { newIdempotencyKey } from "../api/client.js";
 import type { ApprovalDto, AuditEntryDto, BackupDto, ReleaseGateDto, ReportDto } from "../api/types.js";
 import { demoApprovals, demoAudit, demoBackups, demoReleaseGate, demoReports } from "../demo/fixtures.js";
 import { ApprovalCard } from "../components/workspace.js";
@@ -29,6 +30,7 @@ export function ApprovalsScreen() {
     if (gatewayUrl && !demoMode) {
       const result = await client.request("POST", `/v1/admin/approvals/${encodeURIComponent(approval.approval_id)}/resolve`, {
         body: { decision, action_sha256: sha },
+        idempotencyKey: newIdempotencyKey("approval"),
       });
       setToast(result.ok ? "승인 결정이 서버에 기록되었습니다" : `${result.code}: ${result.message}`);
     } else {
@@ -161,8 +163,8 @@ export function AdminScreen() {
 
       <Section title="위험 구역" sub="되돌릴 수 없는 작업">
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Button variant="danger" icon="trash" onClick={() => setConfirm({ title: "데이터 삭제 준비", body: "삭제는 파생 기억·색인·백업까지 전파됩니다. 영향 범위를 확인하고 진행하세요.", action: () => void client.request("POST", "/v1/admin/data-deletion/prepare", { body: {} }) })}>데이터 삭제 준비</Button>
-          <Button variant="danger" icon="backup" onClick={() => setConfirm({ title: "복원 준비", body: "복원은 현재 데이터를 덮어쓸 수 있습니다. 백업 체크섬과 범위를 확인하세요.", action: () => void client.request("POST", "/v1/admin/restores/prepare", { body: {} }) })}>복원 준비</Button>
+          <Button variant="danger" icon="trash" onClick={() => setConfirm({ title: "데이터 삭제 준비", body: "삭제는 파생 기억·색인·백업까지 전파됩니다. 영향 범위를 확인하고 진행하세요.", action: () => void client.request("POST", "/v1/admin/data-deletion/prepare", { body: {}, idempotencyKey: newIdempotencyKey("deletion-prepare") }) })}>데이터 삭제 준비</Button>
+          <Button variant="danger" icon="backup" onClick={() => setConfirm({ title: "복원 준비", body: "복원은 현재 데이터를 덮어쓸 수 있습니다. 백업 체크섬과 범위를 확인하세요.", action: () => void client.request("POST", "/v1/admin/restores/prepare", { body: {}, idempotencyKey: newIdempotencyKey("restore-prepare") }) })}>복원 준비</Button>
         </div>
       </Section>
 
@@ -267,7 +269,7 @@ export function BackupScreen() {
         onClose={() => setDialog(null)}
         title={dialog?.kind === "restore" ? "복원 시험" : "백업 삭제"}
         footer={<><Button variant="ghost" onClick={() => setDialog(null)}>취소</Button><Button variant="danger" onClick={() => {
-          if (dialog?.kind === "restore" && gatewayUrl && !demoMode) void client.request("POST", "/v1/admin/restores/prepare", { body: { backup_id: dialog.backup.backup_id } });
+          if (dialog?.kind === "restore" && gatewayUrl && !demoMode) void client.request("POST", "/v1/admin/restores/prepare", { body: { backup_id: dialog.backup.backup_id }, idempotencyKey: newIdempotencyKey("restore-prepare") });
           setDialog(null);
         }}>실행</Button></>}
       >

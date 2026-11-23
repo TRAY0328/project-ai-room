@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Badge, Banner, Button, Card, Field, Icon, ProgressBar, Reveal, SectionHeader, Tabs, TextInput } from "@ai-room/design-system";
 import { useApp } from "../state/AppState.js";
 import { useResource, relativeTime } from "../api/hooks.js";
+import { newIdempotencyKey } from "../api/client.js";
 import type { ProjectSummary, TaskDto } from "../api/types.js";
 import { demoAgents, demoMetrics, demoProjects, demoReports, demoTasks } from "../demo/fixtures.js";
 import { Kanban, DependencyGraph, VerifiedProgress } from "../components/workspace.js";
@@ -186,7 +187,7 @@ export function TaskBoardScreen({ params }: { params: Record<string, string> }) 
   const move = (task: TaskDto, status: TaskDto["status"]) => {
     setLocal((prev) => (prev ?? serverTasks).map((t) => (t.task_id === task.task_id ? { ...t, status } : t)));
     if (gatewayUrl && !demoMode) {
-      void client.request("PATCH", `/v1/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(task.task_id)}`, { body: { status } });
+      void client.request("PATCH", `/v1/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(task.task_id)}`, { body: { status }, idempotencyKey: newIdempotencyKey("task-status") });
     }
   };
 

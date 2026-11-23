@@ -277,7 +277,6 @@ function imageBlock(block: MessageBlock, options: RenderOptions): VNode {
   const p = rec(block.payload);
   const alt = str(p.alt, "첨부 이미지");
   const url = str(p.url);
-  const sha = str(p.sha256);
   const remote = /^https?:/i.test(url);
   const allowRemote = block.render_policy?.allow_remote_images ?? options.policy?.allow_remote_images ?? false;
   const decision = safeUrl(url);
@@ -292,9 +291,16 @@ function imageBlock(block: MessageBlock, options: RenderOptions): VNode {
           el("div", { class: "mb-small mb-muted" }, txt("추적 방지를 위해 독자가 직접 열 때만 로드됩니다.")),
           renderSafeLink(decision.url, "원본 열기", options),
         )
-      : el("figure", { class: "mb-image-figure" }, el("img", { src: decision.url, alt, class: "mb-image", loading: "lazy", decoding: "async" }), el("figcaption", { class: "mb-muted mb-small" }, txt(alt)));
+      : el(
+          "figure",
+          { class: "mb-image-figure" },
+          // A chat photo is the picture, not a card about the picture: the alt
+          // stays on the img (accessibility, and what the lightbox titles itself
+          // with) and no hash row is drawn over it.
+          el("img", { src: decision.url, alt, class: "mb-image", loading: "lazy", decoding: "async", draggable: "false" }),
+        );
 
-  return blockShell(block, el("div", { class: "mb-image" }, body, sha ? hashRow(sha) : null), options);
+  return blockShell(block, el("div", { class: "mb-image" }, body), options);
 }
 
 function mediaBlock(block: MessageBlock, kind: "video" | "audio", options: RenderOptions): VNode {

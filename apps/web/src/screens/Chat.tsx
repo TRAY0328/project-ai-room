@@ -2,20 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Banner, Button, Card, Dialog, Drawer, Field, Icon, IconButton, Reveal, SectionHeader, Tabs, TextArea, TextInput, useTheme } from "@ai-room/design-system";
 import { useApp } from "../state/AppState.js";
 import { useResource, relativeTime, listOf } from "../api/hooks.js";
-import { RoomStream, type StreamStatus } from "../api/realtime.js";
+import { RoomStream, type RoomReadEntry, type StreamStatus } from "../api/realtime.js";
 import { newIdempotencyKey } from "../api/client.js";
 import { uploadFile } from "../api/upload.js";
 import type { AgentSummary, MemoryRecordDto, MessageDto, RoomSummary, SearchHitDto } from "../api/types.js";
 import { demoAgents, demoMemory, demoMessages, demoRooms, demoSearchHits } from "../demo/fixtures.js";
 import { normalizeWireMessage, type WireMessage } from "../api/wire.js";
 import { readCachedMessages, readCachedRooms, readLastRoomId, rememberLastRoomId, writeCachedMessages, writeCachedRooms } from "../api/chat-cache.js";
-import { Composer, EditHistoryDialog, MessageList, ThreadPanel, insertIntoComposer, type ComposerSendMeta, type MessageActionHandlers } from "../components/chat/index.js";
+import { Composer, EditHistoryDialog, MessageList, ThreadPanel, insertIntoComposer, QUICK_EMOJI, type ComposerSendMeta, type MessageActionHandlers } from "../components/chat/index.js";
 import { ChatActionSheet, ChatSheet, SheetRow, type ChatAction } from "../components/chat/sheets.js";
 import { SplashScreen, splashProgress, splashStageIndex, splashTarget, useSplash } from "../components/chat/splash.js";
 import { AiJoinScreen, SignInScreen } from "./Start.js";
 import { DemoChip, DemoNote, EmptyHint, ResourceView, ScreenHeader, Section } from "../components/ui.js";
 import { openAppNav } from "../lib/shell-nav.js";
 import { chatTime, excerptOf, initialsOf } from "../lib/chat-format.js";
+import { activeReaders, mergeReaderStates, unreadCount } from "../lib/read-state.js";
+import { mergeMessagePages } from "../lib/message-merge.js";
 import type { ScreenId } from "../lib/router.js";
 
 type Navigate = (id: ScreenId, params?: Record<string, string>) => void;
@@ -26,7 +28,7 @@ type Navigate = (id: ScreenId, params?: Record<string, string>) => void;
  * `let` at module scope is the whole state — a reload resets it by definition.
  */
 let splashShownThisLoad = false;
-const SPLASH_MIN_VISIBLE_MS = 1100;
+const SPLASH_MIN_VISIBLE_MS = 720;
 
 /** The gateway spells a room as `room_type` + `latest_seq`; a screen reads `kind` + a last activity. */
 function normalizeRoom(raw: RoomSummary): RoomSummary {
@@ -94,7 +96,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
   const rememberedRoomId = useMemo(() => readLastRoomId(), []);
   const [roomId, setRoomId] = useState<string>(rememberedRoomId ?? "");
   const agentsRes = useResource<AgentSummary[]>(client, "/v1/agents", { enabled: Boolean(gatewayUrl) && !demoMode });
-  const messagesRes = useResource<{ room_id?: string; messages?: WireMessage[]; items?: WireMessage[]; latest_seq?: number }>(client, roomId === "" ? null : `/v1/rooms/${encodeURIComponent(roomId)}/messages`, {
+  const messagesRes = useResource<{ room_id?: string; messages?: WireMessage[]; items?: WireMessage[]; latest_seq?: number; reads?: RoomReadEntry[]; read_window_ms?: number; member_count?: number }>(client, roomId === "" ? null : `/v1/rooms/${encodeURIComponent(roomId)}/messages`, {
     enabled: Boolean(gatewayUrl) && !demoMode,
     // One screenful plus a little: the rest arrives when the reader scrolls up,
     // which keeps the first answer small and the first paint quick.
@@ -125,16 +127,29 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoMode, roomId, messagesRes.state, agentList, self.actor_id, self.display_name]);
 
+  /**
+   * What the server page covers. A cached row inside this window that the page
+   * does not contain was deleted (or is no longer visible to this reader): the
+   * cache must not keep drawing a message the server has already removed.
+   * Rows older than the page are kept — they are history the reader can scroll to.
+   */
+  const pageWindow = useMemo(() => {
+    if (messagesRes.state.kind !== "ready") return null;
+    const data = messagesRes.state.data;
+    if (data.room_id !== undefined && data.room_id !== roomId) return null;
+    const items = data.items ?? data.messages ?? [];
+    const seqs = items.map((item) => item.room_seq).filter((value): value is number => typeof value === "number");
+    const latest = data.latest_seq ?? (seqs.length > 0 ? Math.max(...seqs) : 0);
+    const oldest = seqs.length > 0 ? Math.min(...seqs) : latest;
+    return { oldest, latest, ids: new Set(items.map((item) => item.message_id).filter((id): id is string => typeof id === "string")) };
+  }, [messagesRes.state, roomId]);
+
   // Server rows win over the cache and over a page loaded by scrolling up; the
   // merge is by message_id so a message is never drawn twice.
-  const baseMessages: MessageDto[] = useMemo(() => {
-    if (demoMode) return serverMessages;
-    const byId = new Map<string, MessageDto>();
-    for (const message of seeded) byId.set(message.message_id, message);
-    for (const message of older) byId.set(message.message_id, message);
-    for (const message of serverMessages) byId.set(message.message_id, message);
-    return [...byId.values()];
-  }, [demoMode, serverMessages, seeded, older]);
+  const baseMessages: MessageDto[] = useMemo(
+    () => (demoMode ? serverMessages : mergeMessagePages(seeded, older, serverMessages, pageWindow)),
+    [demoMode, serverMessages, seeded, older, pageWindow],
+  );
 
   const [replyTo, setReplyTo] = useState<MessageDto | null>(null);
   const [threadRoot, setThreadRoot] = useState<MessageDto | null>(null);
@@ -167,6 +182,12 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
   const [deleting, setDeleting] = useState(false);
   const [gatewayInput, setGatewayInput] = useState(gatewayUrl ?? "");
   const [uploadingCount, setUploadingCount] = useState(0);
+  /* Read state for the badges: who has seen up to which room_seq. The page is
+     the truth on entry; a socket notice keeps it current afterwards. */
+  const [reads, setReads] = useState<RoomReadEntry[]>([]);
+  const readWindowMs = messagesRes.state.kind === "ready" ? messagesRes.state.data.read_window_ms ?? 7 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+  /** Ages readers out of the badge window without a refetch. */
+  const [readClock, setReadClock] = useState(() => Date.now());
   /* The real loading screen: it watches the gateway probe, the room list, the
      first message page and the realtime channel, and only then lets go. */
   const [splash, setSplash] = useState(() => !splashShownThisLoad);
@@ -214,6 +235,95 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
   agentNameRef.current = agentName;
   const messagesRef = useRef<MessageDto[]>(messages);
   messagesRef.current = messages;
+
+  /* ------------------------------------------------------- read receipts */
+
+  /** Merge read places, never moving a reader backwards. */
+  const mergeReads = useCallback((incoming: readonly RoomReadEntry[]) => {
+    if (incoming.length === 0) return;
+    setReads((prev) => mergeReaderStates(prev, incoming));
+  }, []);
+
+  // The page carries the read truth; the room switch clears the previous room's.
+  // Keyed by the page's latest_seq so a reload refreshes the rows without the
+  // effect re-running on every render.
+  const pageReadsKey = messagesRes.state.kind === "ready" ? `${roomId}:${messagesRes.state.data.latest_seq ?? 0}` : null;
+  useEffect(() => {
+    if (messagesRes.state.kind !== "ready") return;
+    const data = messagesRes.state.data;
+    if (data.room_id !== undefined && data.room_id !== roomId) return;
+    // Merge, never replace: a page requested before my own read mark answered can
+    // arrive after it, and replacing would put the badge back on a message I
+    // already read.
+    setReads((prev) => mergeReaderStates(prev, (data.reads ?? []).map((entry) => ({ ...entry }))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, pageReadsKey]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setReadClock(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  /** Readers whose mark is recent enough to count toward a badge. */
+  const activeReads = useMemo(() => activeReaders(reads, readClock, readWindowMs), [reads, readClock, readWindowMs]);
+
+  /**
+   * How many active readers have not reached this message yet. KakaoTalk's
+   * number: the author is not one of them, and a reader that left the room (or
+   * stopped visiting it) stops counting on its own.
+   */
+  const unreadOf = useCallback((message: MessageDto): number => unreadCount(message, activeReads), [activeReads]);
+
+  const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const readSentRef = useRef(0);
+  const markRead = useCallback(
+    (target?: number | null) => {
+      if (demoMode || !gatewayUrl || roomId === "" || session === null) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      const seqs = messagesRef.current.map((m) => m.room_seq).filter((value): value is number => typeof value === "number");
+      const head = typeof target === "number" ? target : seqs.length === 0 ? 0 : Math.max(...seqs);
+      if (head <= 0 || head <= readSentRef.current) return;
+      if (readTimer.current !== null) clearTimeout(readTimer.current);
+      readTimer.current = setTimeout(() => {
+        readTimer.current = null;
+        readSentRef.current = head;
+        void client
+          .request<{ reads?: RoomReadEntry[] }>("POST", `/v1/rooms/${encodeURIComponent(roomId)}/read`, { body: { last_read_seq: head } })
+          .then((result) => {
+            if (result.ok) {
+              if (Array.isArray(result.data?.reads) && result.data.reads.length > 0) mergeReads(result.data.reads);
+              // The mark is the reader's own: apply it at once even if the notice
+              // arrives later (or the socket is down).
+              mergeReads([{ actor_kind: self.kind, actor_id: self.actor_id, last_read_seq: head, updated_at: new Date().toISOString() }]);
+            } else if (readSentRef.current === head) {
+              readSentRef.current = Math.max(0, head - 1);
+            }
+          });
+      }, 320);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [client, demoMode, gatewayUrl, roomId, session, self.kind, self.actor_id, mergeReads],
+  );
+
+  // Coming back to the tab, or back to the bottom, is the reader arriving.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") markRead();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [markRead]);
+
+  useEffect(() => {
+    if (messagesRes.state.kind !== "ready") return;
+    // Entering a room lands at the newest message, so the first page is read.
+    // Later arrivals are marked by the list only when the reader is actually at
+    // the bottom — scrolling up to read history is not reading what is below.
+    markRead();
+    // `session` is a dependency because a browser can hold a valid cookie while
+    // its identity is still being recovered; the mark has to run once it is known.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messagesRes.state.kind, roomId, session]);
   const reloadMessagesRef = useRef(messagesRes.reload);
   reloadMessagesRef.current = messagesRes.reload;
   /** Whether the first page of this room has arrived (used by the stream resync). */
@@ -226,6 +336,8 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
     if (roomId === "") return;
     rememberLastRoomId(roomId);
     loadingOlderRef.current = false;
+    setReads([]);
+    readSentRef.current = 0;
     setOlder([]);
     setOlderState({ loading: false, done: false, error: null });
     setSeeded(demoMode || session === null ? [] : [...(readCachedMessages(roomId)?.messages ?? [])]);
@@ -306,6 +418,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
       const wires = result.data.items ?? [];
       if (wires.length > 0) {
         const normalized = wires.map((wire) => normalizeWireMessage(wire, agentNameRef.current));
+        streamRef.current?.noteSeq(normalized[normalized.length - 1]?.room_seq);
         setRealtimeMessages((prev) => {
           const byId = new Map(prev.map((m) => [m.message_id, m]));
           for (const m of normalized) byId.set(m.message_id, m);
@@ -347,16 +460,34 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
         const normalized = normalizeWireMessage(message as unknown as WireMessage, (id) => agentName(id));
         setRealtimeMessages((prev) => (prev.some((m) => m.message_id === normalized.message_id) ? prev.map((m) => (m.message_id === normalized.message_id ? normalized : m)) : [...prev, normalized]));
         setLive((prev) => ({ ...prev, received: prev.received + 1 }));
+        // The frame itself proves the cursor: a later send is not a gap.
+        streamRef.current?.noteSeq(normalized.room_seq);
+      },
+      onRead: (event) => {
+        if (Array.isArray(event.reads) && event.reads.length > 0) {
+          mergeReads(event.reads);
+          return;
+        }
+        if (typeof event.actor_id === "string" && typeof event.last_read_seq === "number") {
+          mergeReads([
+            {
+              actor_kind: event.actor_kind === "owner" ? "owner" : "agent",
+              actor_id: event.actor_id,
+              last_read_seq: event.last_read_seq,
+              updated_at: new Date().toISOString(),
+            },
+          ]);
+        }
       },
       onResync: (reason) => {
         // A first subscribe without a cursor is answered with "send me a snapshot".
         // The page request already in flight IS that snapshot: reloading here
         // would open a second identical request and make the reader wait twice.
         if (/no_cursor|snapshot/i.test(reason) && !pageReadyRef.current) return;
+        // A gap is repaired silently: the page is refetched and the reader sees
+        // the conversation, not a diagnostic. Only a snapshot request on a first
+        // subscribe (no cursor yet) is also normal and equally quiet.
         messagesRes.reload();
-        // A first subscribe has no cursor yet, so the server always asks for a
-        // snapshot. That is the normal path, not a warning the user must read.
-        if (!/no_cursor|snapshot/i.test(reason)) setToast(`실시간 순서 공백 감지(${reason}) — 서버에서 다시 불러왔습니다`);
       },
       // The socket dies with the session (or refuses the upgrade): extend the
       // session first and reconnect with the same cursor, instead of asking the
@@ -364,7 +495,13 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
       onAuthExpired: async () => (await renewSession()) === "renewed",
     });
     streamRef.current = stream;
-    stream.connect(messages.at(-1)?.room_seq ?? null);
+    // The cursor is the room HEAD the page reported, not the newest visible row:
+    // deleted messages leave gaps, and a cursor on the newest visible row would
+    // ask the socket to replay creation events for messages that are gone.
+    const headSeq = messagesRes.state.kind === "ready" && (messagesRes.state.data.room_id === undefined || messagesRes.state.data.room_id === roomId)
+      ? messagesRes.state.data.latest_seq
+      : undefined;
+    stream.connect(typeof headSeq === "number" ? headSeq : messages.at(-1)?.room_seq ?? null);
     return () => {
       stream.close();
       streamRef.current = null;
@@ -434,6 +571,9 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
         const next = [...prev];
         for (const wire of result.accepted) {
           const normalized = normalizeWireMessage(wire, (id) => agentName(id));
+          // The screen already holds this seq; tell the stream so the next live
+          // frame is measured against it instead of looking like a gap.
+          streamRef.current?.noteSeq(normalized.room_seq);
           if (!next.some((m) => m.message_id === normalized.message_id)) next.push(normalized);
         }
         return next;
@@ -570,10 +710,13 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
     }
   };
 
-  const roomMessagesWithReactions = messages.map((m) => ({
-    ...m,
-    reactions: { ...(m.reactions ?? {}), ...(reactions[m.message_id] ?? {}) },
-  }));
+  const roomMessagesWithReactions = useMemo(
+    () => messages.map((m) => ({
+      ...m,
+      reactions: { ...(m.reactions ?? {}), ...(reactions[m.message_id] ?? {}) },
+    })),
+    [messages, reactions],
+  );
 
   /**
    * Chat attachments: upload through the real pipeline (intent -> body PUT ->
@@ -640,6 +783,7 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
     const res = await client.request<{ message_id?: string; deleted_at?: string }>(
       "DELETE",
       `/v1/rooms/${encodeURIComponent(message.room_id)}/messages/${encodeURIComponent(message.message_id)}`,
+      { body: { expected_revision: message.revision ?? 1 }, idempotencyKey: newIdempotencyKey("delete") },
     );
     setDeleting(false);
     if (res.ok) {
@@ -826,6 +970,8 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
                   hasOlder={!olderState.done}
                   olderError={olderState.error}
                   onOpenActions={(message) => setActionsFor(message)}
+                  unreadOf={unreadOf}
+                  onAtBottom={() => markRead()}
                 />
               ) : (
                 <div className="air-chat-body" />
@@ -1027,6 +1173,11 @@ export function MainChatScreen({ navigate }: { navigate: Navigate }) {
         onClose={() => setActionsFor(null)}
         title={actionFor === null ? "메시지" : `${actionFor.author.display_name}의 메시지`}
         actions={messageActions}
+        quickReactions={QUICK_EMOJI}
+        mineReactions={actionFor === null ? [] : mineReactions[actionFor.message_id] ?? []}
+        onReact={(emoji) => {
+          if (actionFor !== null) void react(actionFor, emoji);
+        }}
       />
 
       <ChatSheet

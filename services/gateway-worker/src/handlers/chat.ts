@@ -28,6 +28,8 @@ import {
   optionalString,
   recordProjectEvent,
   roomMemberCount,
+  roomReadState,
+  READ_ACTIVE_WINDOW_MS,
   serializeMessage,
   serializeMessages,
   type MessageRow,
@@ -114,6 +116,31 @@ export const chatHandlers: Record<string, Handler> = {
     for (const row of memberRows as Array<{ room_id: string; n: number }>) memberCounts.set(row.room_id, row.n);
     const latestSeqs = new Map<string, number>();
     for (const row of seqRows as Array<{ room_id: string; n: number }>) latestSeqs.set(row.room_id, row.n);
+    // Unread for the reader, not for the room: messages newer than this member's
+    // own mark, written by someone else, still standing. One grouped read for the
+    // whole list.
+    const unreadByRoom = new Map<string, number>();
+    if (roomIds.length > 0) {
+      const unreadRows = await allRows<{ room_id: string; n: number }>(
+        ctx.db,
+        `SELECT m.room_id AS room_id, COUNT(*) AS n
+           FROM messages m
+           LEFT JOIN room_read_state r
+             ON r.room_id = m.room_id AND r.actor_kind = ? AND r.actor_id = ?
+          WHERE m.room_id IN (${inList})
+            AND m.deleted_at IS NULL
+            AND m.room_seq > COALESCE(r.last_read_seq, 0)
+            AND m.author_id <> ?
+          GROUP BY m.room_id`,
+        ctx.principal.subject.kind === "owner" ? "owner" : "agent",
+        ctx.principal.subject.id,
+        ...roomIds,
+        ctx.principal.subject.id,
+      // A database that never applied 0004 keeps answering the list, just with
+      // no badge (the mark itself is an additive table).
+      ).catch(() => [] as Array<{ room_id: string; n: number }>);
+      for (const row of unreadRows) unreadByRoom.set(row.room_id, row.n);
+    }
     for (const row of rows) {
       items.push({
         room_id: row.room_id,
@@ -122,6 +149,7 @@ export const chatHandlers: Record<string, Handler> = {
         revision: row.revision,
         member_count: memberCounts.get(row.room_id) ?? 0,
         latest_seq: latestSeqs.get(row.room_id) ?? 0,
+        unread_count: unreadByRoom.get(row.room_id) ?? 0,
         created_at: row.created_at,
         updated_at: row.updated_at,
       });
@@ -318,9 +346,31 @@ export const chatHandlers: Record<string, Handler> = {
     const items = await serializeMessages(ctx.db, pageRows);
     const last = pageRows[pageRows.length - 1];
     const nextCursor = rows.length > page.limit && last !== undefined ? String(last.room_seq) : null;
+    // The page carries the read truth the badges are computed from: one row per
+    // member and the window in which a reader still counts. The client subtracts;
+    // the server never renders a per-message count that could disagree with the
+    // next page.
+    const reads = await roomReadState(ctx.db, room.room_id);
+    const memberRow = await firstRow<{ n: number }>(
+      ctx.db,
+      "SELECT COUNT(*) AS n FROM room_members WHERE room_id = ? AND left_at IS NULL",
+      room.room_id,
+    );
     return {
       status: 200,
-      data: { room_id: room.room_id, latest_seq: Number((seqRows[0] as { n?: number } | undefined)?.n ?? 0), items },
+      data: {
+        room_id: room.room_id,
+        latest_seq: Number((seqRows[0] as { n?: number } | undefined)?.n ?? 0),
+        items,
+        reads: reads.map((row) => ({
+          actor_kind: row.actor_kind,
+          actor_id: row.actor_id,
+          last_read_seq: row.last_read_seq,
+          updated_at: row.updated_at,
+        })),
+        read_window_ms: READ_ACTIVE_WINDOW_MS,
+        member_count: Number(memberRow?.n ?? 0),
+      },
       page: {
         next_cursor: nextCursor,
         has_more: nextCursor !== null,

@@ -19,9 +19,9 @@ import { allRows, count, firstRow, sha256Hex, type AuthService } from "@ai-room/
 import { verifyDownloadGrant } from "@ai-room/auth";
 import { loadPrincipal, type Principal } from "@ai-room/permissions";
 import type { Env } from "./env.js";
-import { readCookie, jsonResponse, successEnvelope, SESSION_COOKIE } from "./http.js";
-import { forwardRoomUpgrade } from "./realtime.js";
-import { aclRevision, blocked, ensureMainRoom, getMessageForPrincipal, getProject, getRoom, serializeMessage, setEmergencyStop } from "./domain.js";
+import { readCookie, jsonResponse, successEnvelope, SESSION_COOKIE, CSRF_COOKIE } from "./http.js";
+import { forwardRoomUpgrade, publishRoomNotice } from "./realtime.js";
+import { aclRevision, blocked, ensureMainRoom, getMessageForPrincipal, getProject, getRoom, roomReadState, activeReaders, READ_ACTIVE_WINDOW_MS, serializeMessage, setEmergencyStop } from "./domain.js";
 import { nowOf } from "./env.js";
 import { storageGet, storageMode, storagePut } from "./storage.js";
 
@@ -65,6 +65,32 @@ async function principalOf(ctx: ExtContext): Promise<Principal> {
   return loadPrincipal(ctx.env.DB, authenticated);
 }
 
+/**
+ * A browser has no bearer token, so a byte-upload PUT — an XHR that carries the
+ * session cookie — authenticates from the cookie and must echo the CSRF header.
+ * API clients keep using the bearer path untouched.
+ */
+async function principalFromBrowser(ctx: ExtContext, options: { csrf?: boolean } = {}): Promise<Principal> {
+  const header = ctx.request.headers.get("authorization") ?? "";
+  const bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (bearer.length > 0) {
+    const authenticated = await ctx.auth.authenticate(bearer, ctx.requestId);
+    return loadPrincipal(ctx.env.DB, authenticated);
+  }
+  const cookieToken = readCookie(ctx.request.headers.get("cookie"), SESSION_COOKIE) ?? "";
+  if (cookieToken.length === 0) throw new ApiError({ code: "AUTH_REQUIRED", requestId: ctx.requestId });
+  // A mutating cookie call must echo the double-submit value; a read does not.
+  if (options.csrf !== false) {
+    const headerCsrf = ctx.request.headers.get("x-csrf-token") ?? "";
+    const cookieCsrf = readCookie(ctx.request.headers.get("cookie"), CSRF_COOKIE) ?? "";
+    if (headerCsrf.length === 0 || cookieCsrf.length === 0 || headerCsrf !== cookieCsrf) {
+      throw new ApiError({ code: "PERMISSION_DENIED", requestId: ctx.requestId, details: { reason_code: "CSRF_MISSING" } });
+    }
+  }
+  const authenticated = await ctx.auth.authenticate(cookieToken, ctx.requestId);
+  return loadPrincipal(ctx.env.DB, authenticated);
+}
+
 const routes: { method: string; pattern: RegExp; keys: string[]; handler: ExtHandler }[] = [];
 
 function route(method: string, path: string, handler: ExtHandler): void {
@@ -94,6 +120,134 @@ route("GET", "/api/v1/health/ready", async (ctx) => {
   checks["github"] = ctx.env.GITHUB === undefined ? "unknown" : "up";
   const status = checks["d1"] === "up" ? (checks["r2"] === "up" ? "ok" : "degraded") : "blocked";
   return ok(ctx, { status, checks });
+});
+
+/**
+ * Marks a room as read up to `last_read_seq` for the caller.
+ *
+ * This is a realtime extension, not a catalog endpoint: it writes one row per
+ * (room, reader) and fans out a notice. The session cookie authenticates it (a
+ * browser has no bearer token), the CSRF double-submit header is required for a
+ * cookie call, and membership is checked by `getRoom`. A mark can only move
+ * forward — a second tab that reports an older seq cannot rewind the badge.
+ */
+route("POST", "/api/v1/rooms/{roomId}/read", async (ctx, params) => {
+  const header = ctx.request.headers.get("authorization") ?? "";
+  const bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  const cookieToken = readCookie(ctx.request.headers.get("cookie"), SESSION_COOKIE) ?? "";
+  const token = bearer.length > 0 ? bearer : cookieToken;
+  if (token.length === 0) throw new ApiError({ code: "AUTH_REQUIRED", requestId: ctx.requestId });
+  if (bearer.length === 0) {
+    const headerCsrf = ctx.request.headers.get("x-csrf-token") ?? "";
+    const cookieCsrf = readCookie(ctx.request.headers.get("cookie"), CSRF_COOKIE) ?? "";
+    if (headerCsrf.length === 0 || cookieCsrf.length === 0 || headerCsrf !== cookieCsrf) {
+      throw new ApiError({ code: "PERMISSION_DENIED", requestId: ctx.requestId, details: { reason_code: "CSRF_MISSING" } });
+    }
+  }
+  const authenticated = await ctx.auth.authenticate(token, ctx.requestId);
+  const principal = await loadPrincipal(ctx.env.DB, authenticated);
+  const room = await getRoom(ctx.env.DB, params["roomId"] ?? "", principal, ctx.requestId);
+  const body = (await ctx.request.json().catch(() => ({}))) as Record<string, unknown>;
+  const requested = Number(body["last_read_seq"]);
+  if (!Number.isInteger(requested) || requested < 0) {
+    throw new ApiError({ code: "VALIDATION_FAILED", requestId: ctx.requestId, message: "last_read_seq는 0 이상의 정수여야 합니다.", details: { field: "last_read_seq" } });
+  }
+  const head = Number(
+    (await firstRow<{ n: number }>(ctx.env.DB, "SELECT COALESCE(MAX(room_seq),0) AS n FROM messages WHERE room_id = ?", room.room_id))?.n ?? 0,
+  );
+  const seq = Math.min(requested, head);
+  const actorKind = principal.subject.kind === "owner" ? "owner" : "agent";
+  const before = await firstRow<{ last_read_seq: number }>(
+    ctx.env.DB,
+    "SELECT last_read_seq FROM room_read_state WHERE room_id = ? AND actor_kind = ? AND actor_id = ?",
+    room.room_id,
+    actorKind,
+    principal.subject.id,
+  );
+  const effective = Math.max(seq, before?.last_read_seq ?? 0);
+  await ctx.env.DB
+    .prepare(
+      `INSERT INTO room_read_state (room_id, actor_kind, actor_id, last_read_seq, updated_at)
+       VALUES (?,?,?,?,?)
+       ON CONFLICT(room_id, actor_kind, actor_id)
+       DO UPDATE SET last_read_seq = excluded.last_read_seq, updated_at = excluded.updated_at`,
+    )
+    .bind(room.room_id, actorKind, principal.subject.id, effective, ctx.now)
+    .run();
+  const reads = await roomReadState(ctx.env.DB, room.room_id);
+  const active = activeReaders(reads, Date.parse(ctx.now));
+  const link = await firstRow<{ project_id: string }>(ctx.env.DB, "SELECT project_id FROM project_room_links WHERE room_id = ? LIMIT 1", room.room_id);
+  // Awaited: a Worker may be torn down once its response is sent, and a read
+  // badge that only moves on the next reload is not a realtime badge.
+  await publishRoomNotice(ctx.env, ctx.auth, {
+    roomId: room.room_id,
+    projectId: link?.project_id ?? null,
+    subject: principal.subject,
+    aclRevision: await aclRevision(ctx.env.DB, room.room_id),
+    requestId: ctx.requestId,
+    event: {
+      schema_version: 1,
+      event_id: mintId("event"),
+      type: "room.read.updated",
+      project_id: link?.project_id ?? null,
+      room_id: room.room_id,
+      sequence: effective,
+      correlation_id: `${principal.subject.id}:${effective}`,
+      occurred_at: toUtcIso(Date.parse(ctx.now)),
+      payload: {
+        actor_kind: actorKind,
+        actor_id: principal.subject.id,
+        last_read_seq: effective,
+        reads: reads.map((row) => ({
+          actor_kind: row.actor_kind,
+          actor_id: row.actor_id,
+          last_read_seq: row.last_read_seq,
+          updated_at: row.updated_at,
+        })),
+      },
+    },
+  });
+  return ok(
+    ctx,
+    {
+      room_id: room.room_id,
+      actor_kind: actorKind,
+      actor_id: principal.subject.id,
+      last_read_seq: effective,
+      latest_seq: head,
+      active_member_count: active.length,
+      reads: reads.map((row) => ({
+        actor_kind: row.actor_kind,
+        actor_id: row.actor_id,
+        last_read_seq: row.last_read_seq,
+        updated_at: row.updated_at,
+      })),
+      read_window_ms: READ_ACTIVE_WINDOW_MS,
+    },
+    201,
+  );
+});
+
+/**
+ * Who is this browser? A session cookie survives a reload even when the page's
+ * local hint does not, and an AI that joined by key has no owner session at all.
+ * Without this the cookie was authenticated but the UI did not know whose
+ * messages were "mine", and a reload could not mark anything read.
+ */
+route("GET", "/api/v1/auth/whoami", async (ctx) => {
+  const principal = await principalFromBrowser(ctx, { csrf: false });
+  const kind = principal.subject.kind === "owner" ? "owner" : "agent";
+  const row = kind === "owner"
+    ? await firstRow<{ display_name: string; email: string | null }>(ctx.env.DB, "SELECT display_name, email FROM owners WHERE owner_id = ?", principal.subject.id)
+    : await firstRow<{ display_name: string }>(ctx.env.DB, "SELECT display_name FROM agents WHERE agent_id = ?", principal.subject.id);
+  return ok(ctx, {
+    subject_kind: kind,
+    subject_id: principal.subject.id,
+    display_name: row?.display_name ?? (kind === "owner" ? "소유자" : "AI"),
+    ...(kind === "owner" && row !== null && "email" in row ? { email: (row as { email: string | null }).email } : {}),
+    room_ids: principal.membership.roomIds,
+    project_ids: principal.membership.projectIds,
+  });
 });
 
 route("POST", "/api/v1/rooms/{roomId}/ws-ticket", async (ctx, params) => {
@@ -227,7 +381,8 @@ route("POST", "/api/v1/tasks/{taskId}/evidence", async (ctx, params) => {
 });
 
 route("PUT", "/api/v1/files/uploads/{uploadId}/content", async (ctx, params) => {
-  const principal = await principalOf(ctx);
+  // The browser's XHR upload carries the session cookie, not a bearer token.
+  const principal = await principalFromBrowser(ctx);
   const file = await firstRow<{ file_id: string; r2_key: string; creator_id: string; size_bytes: number; storage_state: string }>(
     ctx.env.DB,
     "SELECT file_id, r2_key, creator_id, size_bytes, storage_state FROM files WHERE file_id = ?",
@@ -304,7 +459,9 @@ async function serveDownload(ctx: ExtContext, params: Record<string, string>, ki
         const attached = await firstRow<{ room_id: string }>(
           ctx.env.DB,
           "SELECT m.room_id FROM message_files mf JOIN messages m ON m.message_id = mf.message_id WHERE mf.file_id = ? LIMIT 1",
-          grantedTargetId ?? "",
+          // The session path has no grant, so the id comes from the path: using
+          // the (null) grant id here refused every member but the owner.
+          params["fileId"] ?? "",
         );
         if (attached === null || !sessionFallback.membership.roomIds.includes(attached.room_id)) {
           throw new ApiError({ code: "PERMISSION_DENIED", requestId: ctx.requestId, details: { reason_code: "NOT_ROOM_MEMBER" } });
@@ -330,7 +487,10 @@ async function serveDownload(ctx: ExtContext, params: Record<string, string>, ki
       "content-type": mime,
       "content-length": String(bytes.length),
       "content-disposition": `${inline ? "inline" : "attachment"}; filename="${filename}"`,
-      "cache-control": "private, max-age=300",
+      // A file id names immutable bytes (its sha256 is verified on upload), so a
+      // second look is a cache hit instead of another round trip through the
+      // storage bridge. `private`: the bytes are the reader's, not a CDN's.
+      "cache-control": "private, max-age=604800, immutable",
       "x-request-id": ctx.requestId,
     },
   });

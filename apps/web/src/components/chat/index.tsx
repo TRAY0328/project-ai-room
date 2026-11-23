@@ -204,6 +204,11 @@ export interface ReplyTarget {
   name: string;
 }
 
+export interface ImagePreview {
+  src: string;
+  alt: string;
+}
+
 export function MessageCard({
   message,
   index = 0,
@@ -215,7 +220,10 @@ export function MessageCard({
   grouped,
   groupEnd = true,
   replyTo,
+  replyToName,
+  unread = 0,
   onJumpToReply,
+  onOpenImage,
   onToggleReaction,
   onAddReaction,
   handlers,
@@ -235,8 +243,14 @@ export function MessageCard({
   grouped?: boolean;
   /** Last bubble of its group: this is where the clock belongs, the way KakaoTalk draws it. */
   groupEnd?: boolean;
-  replyTo?: ReplyTarget | null;
+  /** The quoted message; the name is resolved by the room so the card stays stable. */
+  replyTo?: MessageDto | null;
+  replyToName?: string;
+  /** Active readers that have not reached this message yet (0 hides the number). */
+  unread?: number;
   onJumpToReply?: (message: MessageDto) => void;
+  /** A tap on an inline photo opens the full picture instead of the action sheet. */
+  onOpenImage?: (image: ImagePreview) => void;
   onToggleReaction?: (message: MessageDto, emoji: string) => void;
   onAddReaction?: (message: MessageDto, emoji: string) => void;
   handlers: MessageActionHandlers;
@@ -251,6 +265,8 @@ export function MessageCard({
     [message, pendingDelivery],
   );
 
+  /** A message that is only a photo: the picture is the bubble, no yellow frame. */
+  const mediaOnly = message.blocks.length === 1 && (message.blocks[0]?.type === "image_ref" || message.blocks[0]?.type === "image");
   const firstCode = message.blocks.find((b) => b.type === "code");
   const codePayload = firstCode ? (firstCode.payload as { code?: string; filename?: string }) : null;
   const note = pendingDelivery ? { label: "전송 중", tone: "warn" as const } : deliveryNote(message);
@@ -307,15 +323,16 @@ export function MessageCard({
         ) : null}
 
         {replyTo ? (
-          <button type="button" className="air-reply-quote" onClick={() => onJumpToReply?.(replyTo.message)} title="원문으로 이동">
-            <span className="air-reply-quote-name">{replyTo.name}</span>
-            <span className="air-reply-quote-text">{excerptOf(replyTo.message)}</span>
+          <button type="button" className="air-reply-quote" onClick={() => onJumpToReply?.(replyTo)} title="원문으로 이동">
+            <span className="air-reply-quote-name">{replyToName ?? replyTo.author.display_name}</span>
+            <span className="air-reply-quote-text">{excerptOf(replyTo)}</span>
           </button>
         ) : null}
 
         <div className="air-msg-line">
           <div
             className="air-msg-bubble"
+            data-media={mediaOnly ? "image" : undefined}
             tabIndex={0}
             aria-label={`${message.author.display_name} 메시지`}
             onClick={(event) => {
@@ -324,6 +341,15 @@ export function MessageCard({
                 return;
               }
               const target = event.target as HTMLElement;
+              // A photo opens full screen; the rest of the bubble is a menu.
+              const photo = target.closest("img");
+              if (photo !== null) {
+                const src = photo.getAttribute("src") ?? "";
+                if (src.length > 0) {
+                  onOpenImage?.({ src, alt: photo.getAttribute("alt") ?? "사진" });
+                  return;
+                }
+              }
               // A link, a button or a code action inside the bubble keeps its own job.
               if (target.closest("a, button, input, textarea, select") !== null) return;
               openActions();
@@ -359,6 +385,11 @@ export function MessageCard({
           </div>
 
           <div className="air-msg-side">
+            {groupEnd && unread > 0 ? (
+              <span className="air-msg-unread" data-testid="message-unread" title={`${unread}명이 아직 읽지 않았습니다`}>
+                {unread}
+              </span>
+            ) : null}
             {groupEnd ? (
               <time className="air-msg-time" dateTime={message.created_at} title={new Date(message.created_at).toISOString()}>
                 {chatTime(message.created_at)}
@@ -829,6 +860,8 @@ export function MessageList({
   hasOlder = false,
   olderError = null,
   onOpenActions,
+  unreadOf,
+  onAtBottom,
 }: {
   messages: readonly MessageDto[];
   pending?: Array<{ item: { id: string; roomId: string; createdAt: string; blocks: MessageDto["blocks"]; state: string } }>;
@@ -846,6 +879,10 @@ export function MessageList({
   olderError?: string | null;
   /** A tap on a bubble asks the room for the message's action sheet. */
   onOpenActions?: (message: MessageDto) => void;
+  /** Active readers that have not reached a message yet (0 = no number). */
+  unreadOf?: (message: MessageDto) => number;
+  /** The reader is at (or returned to) the newest message — a read mark is due. */
+  onAtBottom?: () => void;
 }) {
   const visible = filter
     ? messages.filter((m) => JSON.stringify(m.blocks).toLowerCase().includes(filter.toLowerCase()))
@@ -853,12 +890,16 @@ export function MessageList({
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
+  /** The callback is read through a ref so the scroll helpers keep one identity. */
+  const onAtBottomRef = useRef(onAtBottom);
+  onAtBottomRef.current = onAtBottom;
   const countRef = useRef(0);
   /** Previous scrollTop: only an upward move asks for history. */
   const lastTopRef = useRef(0);
   const [atBottom, setAtBottom] = useState(true);
   const [unseen, setUnseen] = useState(0);
   const [flashId, setFlashId] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<ImagePreview | null>(null);
   /** scroll height/top before an older page was asked for, to keep the reader's place. */
   const anchorRef = useRef<{ height: number; top: number; firstId: string | null } | null>(null);
   /** Set when older rows were inserted above; the growth effect must not call it news. */
@@ -881,6 +922,7 @@ export function MessageList({
     atBottomRef.current = true;
     setAtBottom(true);
     setUnseen(0);
+    onAtBottomRef.current?.();
   }, []);
 
   // Entering a room starts at the newest message — the place a reader looks for.
@@ -894,6 +936,21 @@ export function MessageList({
     const frame = requestAnimationFrame(() => scrollToBottom("auto"));
     return () => cancelAnimationFrame(frame);
   }, [roomId, scrollToBottom]);
+
+  // A photo that finishes decoding grows the row after it was measured. A reader
+  // who is at the bottom stays at the bottom instead of being pushed up by a
+  // picture they just received.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el === null) return;
+    const onLoad = (event: Event) => {
+      if (!(event.target instanceof HTMLImageElement)) return;
+      if (!atBottomRef.current) return;
+      el.scrollTop = el.scrollHeight;
+    };
+    el.addEventListener("load", onLoad, true);
+    return () => el.removeEventListener("load", onLoad, true);
+  }, []);
 
   // A message arriving while the reader is at the bottom stays in view; one that
   // arrives while they are reading history offers the floating jump instead. A
@@ -940,6 +997,16 @@ export function MessageList({
     }
     anchorRef.current = null;
   }, [visible, loadingOlder]);
+
+  // A lightbox closes on Escape as well as on a tap outside the picture.
+  useEffect(() => {
+    if (lightbox === null) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLightbox(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox]);
 
   useEffect(() => {
     if (flashId === null) return;
@@ -1014,9 +1081,11 @@ export function MessageList({
         onScroll={(e) => {
           const el = e.currentTarget;
           const near = isNearBottom(el);
+          const wasAtBottom = atBottomRef.current;
           atBottomRef.current = near;
           setAtBottom(near);
           if (near) setUnseen(0);
+          if (near && !wasAtBottom) onAtBottomRef.current?.();
           // History is requested only on a real upward move inside content that
           // can scroll: the container sits at 0 while the first page is still on
           // its way (and its height jitters by a few pixels as it settles), which
@@ -1068,8 +1137,11 @@ export function MessageList({
                 mine={row.mine}
                 grouped={row.grouped && parent === null}
                 groupEnd={row.groupEnd}
-                replyTo={parent === null ? null : { message: parent, name: parent.author.actor_id === (self?.actor_id ?? "") ? (self?.display_name ?? parent.author.display_name) : (nameOf?.(parent.author.actor_id) ?? parent.author.display_name) }}
+                unread={unreadOf?.(row.message) ?? 0}
+                replyTo={parent}
+                replyToName={parent === null ? undefined : parent.author.actor_id === (self?.actor_id ?? "") ? (self?.display_name ?? parent.author.display_name) : (nameOf?.(parent.author.actor_id) ?? parent.author.display_name)}
                 onJumpToReply={jumpTo}
+                onOpenImage={(image) => setLightbox(image)}
                 onToggleReaction={(message, emoji) => handlers.onToggleReaction?.(message, emoji)}
                 onAddReaction={(message, emoji) => handlers.onAddReaction?.(message, emoji)}
                 onOpenActions={onOpenActions}
@@ -1100,10 +1172,22 @@ export function MessageList({
       </div>
 
       {(!atBottom || unseen > 0) && visible.length > 0 ? (
-        <button type="button" className="air-new-msg" onClick={() => scrollToBottom("smooth")} data-testid="chat-jump-newest">
-          <Icon name="chevronDown" size={14} />
-          {unseen > 0 ? `${unseen}개 새 메시지` : "맨 아래로"}
+        <button type="button" className="air-new-msg" onClick={() => scrollToBottom("smooth")} data-testid="chat-jump-newest" title={unseen > 0 ? `${unseen}개 새 메시지` : "맨 아래로"} aria-label={unseen > 0 ? `새 메시지 ${unseen}개 — 맨 아래로` : "맨 아래로"}>
+          <Icon name="chevronDown" size={17} />
+          {unseen > 0 ? <span className="air-new-msg-badge" data-testid="chat-jump-count">{unseen > 99 ? "99+" : unseen}</span> : null}
         </button>
+      ) : null}
+
+      {lightbox !== null ? (
+        <div className="air-lightbox" role="dialog" aria-modal="true" aria-label={lightbox.alt} onClick={() => setLightbox(null)} data-testid="image-lightbox">
+          <button type="button" className="air-lightbox-close" aria-label="사진 닫기" onClick={() => setLightbox(null)}>
+            <Icon name="close" size={18} />
+          </button>
+          <figure className="air-lightbox-figure" onClick={(event) => event.stopPropagation()}>
+            <img src={lightbox.src} alt={lightbox.alt} />
+            <figcaption>{lightbox.alt}</figcaption>
+          </figure>
+        </div>
       ) : null}
     </div>
   );

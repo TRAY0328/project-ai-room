@@ -9,6 +9,21 @@ import type { MessageDto } from "./types.js";
 
 export type StreamStatus = "idle" | "connecting" | "live" | "reconnecting" | "closed" | "error";
 
+/** One member's read place, as the server stores it. */
+export interface RoomReadEntry {
+  actor_kind: "owner" | "agent";
+  actor_id: string;
+  last_read_seq: number;
+  updated_at?: string;
+}
+
+export interface RoomReadEvent {
+  actor_kind?: "owner" | "agent";
+  actor_id?: string;
+  last_read_seq?: number;
+  reads?: RoomReadEntry[];
+}
+
 export interface RoomStreamOptions {
   baseUrl: string;
   roomId: string;
@@ -16,6 +31,8 @@ export interface RoomStreamOptions {
   onMessage: (message: MessageDto, event: string) => void;
   /** Called when the server says the client must refetch (gap / unknown version). */
   onResync: (reason: string) => void;
+  /** Called for a read mark broadcast — the badge moves without a refetch. */
+  onRead?: (event: RoomReadEvent) => void;
   onStatus: (status: StreamStatus, detail?: string) => void;
   /**
    * Called once per disconnect before reconnecting when the close looks like an
@@ -66,6 +83,16 @@ export class RoomStream {
 
   get statusSeq(): number | null {
     return this.lastSeq;
+  }
+
+  /**
+   * Records a sequence the screen already holds (a POST answer, a tail sync).
+   * Without this the socket compares its cursor with messages that arrived out
+   * of band and calls an ordinary send a "gap".
+   */
+  noteSeq(seq: number | null | undefined): void {
+    if (typeof seq !== "number" || !Number.isFinite(seq)) return;
+    if (this.lastSeq === null || seq > this.lastSeq) this.lastSeq = seq;
   }
 
   connect(sinceSeq: number | null = null): void {
@@ -121,6 +148,12 @@ export class RoomStream {
       const type = envelope.type ?? "";
       const message = parsed.message ?? envelope.payload?.message;
       const seq = envelope.sequence ?? parsed.room_seq ?? envelope.room_seq ?? message?.room_seq ?? null;
+      // A read notice has no ordering meaning: it is handled before the gap check
+      // so a read mark can never be mistaken for a skipped message.
+      if (type === "room.read.updated") {
+        this.options.onRead?.((envelope.payload ?? {}) as RoomReadEvent);
+        return;
+      }
       if (parsed.type === "SNAPSHOT_REQUIRED") {
         this.options.onResync(`server requested resync (${parsed.reason ?? "snapshot"})`);
         return;

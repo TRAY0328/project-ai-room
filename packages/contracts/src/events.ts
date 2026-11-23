@@ -24,6 +24,9 @@ export const EVENT_TYPES = [
   "room.message.updated",
   "room.message.deleted",
   "room.message.restored",
+  // A reader moved their place in a room. It is not a message: it carries no new
+  // room_seq, so consumers must not treat it as ordering evidence.
+  "room.read.updated",
   "message.version.created",
   "message.reaction.added",
   "message.delivery.acknowledged",
@@ -136,6 +139,12 @@ export const zTaskStatusPayload = z.object({
   ]),
   attempt_id: z.string().min(1).nullable(),
   fencing_generation: z.number().int().nonnegative(),
+});
+
+export const zRoomReadUpdatedPayload = z.object({
+  actor_kind: z.enum(["owner", "agent"]),
+  actor_id: z.string().min(1),
+  last_read_seq: z.number().int().nonnegative(),
 });
 
 export const zMessageCreatedPayload = z.object({

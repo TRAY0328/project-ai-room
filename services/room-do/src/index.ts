@@ -257,8 +257,7 @@ export class RoomLiveSession extends RoomCoordinator {
    * Fan-out of one D1-persisted message. The gateway sends exactly the event it
    * also serves over HTTPS, so a socket frame and a cursor resync cannot
    * disagree about what happened.
-   */
-  async publish(seq: number, row: RoomMessageRow, event: WireEvent): Promise<number> {
+   */  async publish(seq: number, row: RoomMessageRow, event: WireEvent): Promise<number> {
     if (row.room_seq !== seq) throw new Error("seq mismatch between broadcast and row");
     if (seq <= this.state.persistedSeq) return 0;
     this.state.persistedSeq = seq;
@@ -277,6 +276,25 @@ export class RoomLiveSession extends RoomCoordinator {
       } catch {
         // A dead socket is swept by the heartbeat alarm; one failure must not
         // stop delivery to the others.
+      }
+    }
+    return delivered;
+  }
+
+  /**
+   * A notice is realtime-only truth: who read up to which seq. It carries no new
+   * room_seq, so it must not touch `persistedSeq` or the replay buffer — a
+   * reconnect recovers read state with the page, not by replaying notices.
+   */
+  async broadcastNotice(event: WireEvent): Promise<number> {
+    const frame: ServerFrame = { type: "EVENT", event };
+    let delivered = 0;
+    for (const record of this.records.values()) {
+      try {
+        record.socket.send(JSON.stringify(frame));
+        delivered += 1;
+      } catch {
+        // A dead socket is swept by the heartbeat alarm.
       }
     }
     return delivered;
@@ -549,6 +567,17 @@ export class RoomDurableObject {
       const body = (await request.json().catch(() => null)) as { row?: RoomMessageRow; event?: WireEvent } | null;
       if (body?.row === undefined || body.event === undefined) return this.json({ code: "VALIDATION_FAILED" }, 422);
       const delivered = await session.publish(body.row.room_seq, body.row, body.event);
+      return this.json({ delivered });
+    }
+
+    // A read notice fans out to open sockets and leaves no ordering trace.
+    if (url.pathname.endsWith("/notice")) {
+      const ticket = url.searchParams.get("ticket") ?? "";
+      if (ticket.length === 0) return this.json({ code: "AUTH_REQUIRED" }, 401);
+      if (!(await session.authorize(ticket))) return this.json({ code: "AUTH_REVOKED" }, 401);
+      const body = (await request.json().catch(() => null)) as { event?: WireEvent } | null;
+      if (body?.event === undefined) return this.json({ code: "VALIDATION_FAILED" }, 422);
+      const delivered = await session.broadcastNotice(body.event);
       return this.json({ delivered });
     }
 

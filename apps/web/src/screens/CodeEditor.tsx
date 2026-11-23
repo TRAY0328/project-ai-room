@@ -3,6 +3,7 @@ import { Badge, Button, Dialog, Field, Icon, SectionHeader, Tabs, TextArea, Text
 import { FileTree, MonacoYjsEditor } from "@ai-room/editor";
 import { useApp } from "../state/AppState.js";
 import { useResource } from "../api/hooks.js";
+import { newIdempotencyKey } from "../api/client.js";
 import type { TreeNode } from "@ai-room/editor";
 import { demoFileContent, demoTree } from "../demo/fixtures.js";
 import { DemoChip, ScreenHeader } from "../components/ui.js";
@@ -31,6 +32,7 @@ export function EditorScreen({ params }: { params: Record<string, string> }) {
     }
     const res = await client.request<{ commit_sha?: string; pr_number?: number }>("POST", `/v1/projects/${encodeURIComponent(projectId)}/ide/publish`, {
       body: { doc_id: path, message, base_sha: null },
+      idempotencyKey: newIdempotencyKey("publish"),
     });
     setPublishResult(res.ok ? `커밋 생성: ${res.data.commit_sha ?? "(SHA 미제공)"}` : `${res.code}: ${res.message}`);
   };

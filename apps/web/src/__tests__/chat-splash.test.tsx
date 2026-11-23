@@ -41,9 +41,13 @@ describe("splash progress rules", () => {
     expect(demo.finished).toBe(true);
   });
 
-  it("waits for the realtime channel only while a live session could have one", () => {
-    const waiting = splashProgress({ demoMode: false, connectionState: "ready", roomsState: "ready", messagesState: "ready", streamState: "connecting" });
-    expect(waiting.finished).toBe(false);
+  it("lets the room in once its page is drawn, while the socket is still connecting", () => {
+    // The handshake is the header's state ("실시간 연결 중"), not a reason to
+    // keep the splash over a conversation that is already readable.
+    const connecting = splashProgress({ demoMode: false, connectionState: "ready", roomsState: "ready", messagesState: "ready", streamState: "connecting" });
+    expect(connecting.finished).toBe(true);
+    const idle = splashProgress({ demoMode: false, connectionState: "ready", roomsState: "ready", messagesState: "ready", streamState: "idle" });
+    expect(idle.finished).toBe(false);
     const live = splashProgress({ demoMode: false, connectionState: "ready", roomsState: "ready", messagesState: "ready", streamState: "live" });
     expect(live.finished).toBe(true);
   });

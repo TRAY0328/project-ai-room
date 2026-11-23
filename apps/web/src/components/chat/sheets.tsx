@@ -182,15 +182,43 @@ export function ChatActionSheet({
   title,
   actions,
   testId = "chat-action-sheet",
+  quickReactions = [],
+  mineReactions = [],
+  onReact,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   actions: ChatAction[];
   testId?: string;
+  /** One-tap reactions at the top of the sheet, the way KakaoTalk offers them. */
+  quickReactions?: readonly string[];
+  mineReactions?: readonly string[];
+  onReact?: (emoji: string) => void;
 }) {
   return (
     <ChatSheet open={open} onClose={onClose} title={title} variant="compact" testId={testId}>
+      {quickReactions.length > 0 && onReact !== undefined ? (
+        <div className="air-action-reactions" role="group" aria-label="빠른 반응">
+          {quickReactions.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              className="air-action-reaction"
+              data-mine={mineReactions.includes(emoji) || undefined}
+              aria-pressed={mineReactions.includes(emoji)}
+              aria-label={`${emoji} 반응`}
+              data-testid="action-quick-reaction"
+              onClick={() => {
+                onClose();
+                onReact(emoji);
+              }}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="air-action-list">
         {actions.map((action) => (
           <button

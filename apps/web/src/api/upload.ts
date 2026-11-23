@@ -1,4 +1,4 @@
-import type { ApiClient, ApiResult } from "./client.js";
+import { newIdempotencyKey, type ApiClient, type ApiResult } from "./client.js";
 
 export interface UploadIntent {
   upload_id: string;
@@ -97,11 +97,19 @@ export async function uploadFile(
   const sha256 = await sha256Hex(file);
   const intent = await client.request<UploadIntent>("POST", "/v1/files/upload-intents", {
     body: { filename: file.name, mime_type: mime, size_bytes: file.size, sha256 },
+    // Both halves of an upload are catalogued mutations: the gateway refuses a
+    // POST without this header (VALIDATION_FAILED), which is exactly how an
+    // upload used to fail before the bytes were ever sent.
+    idempotencyKey: newIdempotencyKey("upload-intent"),
   });
   if (!intent.ok) return intent;
 
   const { upload_id, upload_url } = intent.data;
-  const put = await putChunk(upload_url, file, { "content-type": mime }, (loaded) => {
+  // The bytes go up as an XHR with the session cookie; the gateway checks the
+  // double-submit CSRF value on that path, so the page's readable cookie is
+  // echoed here exactly like ApiClient does for JSON requests.
+  const csrf = readCookie("air_csrf");
+  const put = await putChunk(upload_url, file, { "content-type": mime, ...(csrf === null ? {} : { "x-csrf-token": csrf }) }, (loaded) => {
     options.onProgress?.({ sent: loaded, total: file.size, partIndex: 0, partCount: 1, resumable: false });
   });
   if (!put.ok) {
@@ -117,7 +125,18 @@ export async function uploadFile(
 
   return client.request<UploadOutcome>("POST", `/v1/files/uploads/${encodeURIComponent(upload_id)}/complete`, {
     body: { parts: [], sha256, byte_count: file.size },
+    idempotencyKey: newIdempotencyKey("upload-complete"),
   });
+}
+
+/** The double-submit value the page is allowed to read. */
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  for (const part of document.cookie.split(";")) {
+    const [key, ...rest] = part.trim().split("=");
+    if (key === name) return decodeURIComponent(rest.join("="));
+  }
+  return null;
 }
 
 export function hasResumeState(file: File): boolean {

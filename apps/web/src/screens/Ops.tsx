@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Badge, Banner, Button, Card, Icon, Reveal, SectionHeader, Select, VerificationBadge } from "@ai-room/design-system";
 import { useApp } from "../state/AppState.js";
 import { useResource } from "../api/hooks.js";
+import { newIdempotencyKey } from "../api/client.js";
 import type { AlertDto, ConnectionDto } from "../api/types.js";
 import { demoAlerts, demoConnections } from "../demo/fixtures.js";
 import { DemoChip, DemoNote, EmptyHint, ResourceView, ScreenHeader, Section } from "../components/ui.js";
@@ -55,7 +56,7 @@ export function ConnectionsScreen() {
       setToast("데모/미연결 모드 — 검증 요청을 서버로 보내지 않았습니다");
       return;
     }
-    const result = await client.request("POST", `/v1/providers/${encodeURIComponent(connection.provider)}/verify`, { body: {} });
+    const result = await client.request("POST", `/v1/providers/${encodeURIComponent(connection.provider)}/verify`, { body: {}, idempotencyKey: newIdempotencyKey("provider-verify") });
     setToast(result.ok ? "검증 요청 전송 — 결과는 capability 증거로 갱신됩니다" : `${result.code}: ${result.message}`);
   };
 

@@ -49,14 +49,15 @@ export function splashProgress(input: {
   const notPending = (state: string): boolean =>
     demoMode || (state !== "idle" && state !== "loading" && state !== "checking");
   const connectionSettled = demoMode || (connectionState !== "checking" && connectionState !== "unconfigured");
-  // The socket never opens without a live session and a real room; holding the
-  // door for it would be a lie, so any settled connection counts as answered.
+  // The room is readable as soon as its page is drawn; the socket finishes its
+  // handshake a moment later and the header reports that state honestly. Holding
+  // the door for the handshake made the splash 500ms longer than the content.
   const streamSettled =
     demoMode ||
     connectionState === "unauthenticated" ||
     connectionState === "unconfigured" ||
     connectionState === "unreachable" ||
-    (streamState !== "idle" && streamState !== "connecting");
+    streamState !== "idle";
   const settled = [connectionSettled, notPending(roomsState), notPending(messagesState), streamSettled];
   return { settled, finished: settled.every(Boolean) };
 }
@@ -90,7 +91,7 @@ export function useSplash(
   target: number,
   finished: boolean,
   onDone: () => void,
-  minVisibleMs = 1100,
+  minVisibleMs = 720,
 ): { percent: number; exiting: boolean } {
   const [displayed, setDisplayed] = useState(0);
   const [exiting, setExiting] = useState(false);
@@ -132,7 +133,7 @@ export function useSplash(
       setTimeout(() => {
         setDisplayed(100);
         setExiting(true);
-        timers.push(setTimeout(() => doneRef.current(), 700));
+        timers.push(setTimeout(() => doneRef.current(), 420));
       }, remaining),
     );
     return () => timers.forEach(clearTimeout);

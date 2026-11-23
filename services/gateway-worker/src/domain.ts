@@ -318,6 +318,44 @@ export async function tableCounts(db: SqlDb, tables: readonly string[]): Promise
   return out;
 }
 
+/**
+ * Read state: the last room_seq each member has actually seen.
+ *
+ * A reader counts toward an unread badge only while their row was touched inside
+ * the active window. That is what keeps the number honest in a room that holds
+ * AI members: an assistant that visited yesterday is a reader, and one that has
+ * not opened the room in a week no longer inflates every message.
+ */
+export const READ_ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+export interface RoomReadStateRow {
+  readonly actor_kind: "owner" | "agent";
+  readonly actor_id: string;
+  readonly last_read_seq: number;
+  readonly updated_at: string;
+}
+
+export async function roomReadState(db: SqlDb, roomId: string): Promise<RoomReadStateRow[]> {
+  try {
+    return await allRows<RoomReadStateRow>(
+      db,
+      "SELECT actor_kind, actor_id, last_read_seq, updated_at FROM room_read_state WHERE room_id = ? ORDER BY updated_at ASC",
+      roomId,
+    );
+  } catch {
+    // A database that has not applied 0004 keeps working: no rows, no badges.
+    return [];
+  }
+}
+
+/** Readers that count toward unread badges right now. */
+export function activeReaders(rows: readonly RoomReadStateRow[], nowMs = Date.now(), windowMs = READ_ACTIVE_WINDOW_MS): RoomReadStateRow[] {
+  return rows.filter((row) => {
+    const seen = Date.parse(row.updated_at);
+    return Number.isFinite(seen) && nowMs - seen <= windowMs;
+  });
+}
+
 export async function latestSeq(db: SqlDb, roomId: string): Promise<number> {
   return Number((await scalar<number>(db, "SELECT COALESCE(MAX(room_seq),0) AS n FROM messages WHERE room_id = ?", roomId)) ?? 0);
 }

@@ -156,6 +156,9 @@ export function AppStateProvider({ children, initialGateway = null }: { children
     setOutboxState(next);
   }, []);
   const [agentSelf, setAgentSelfState] = useState<{ agent_id: string; display_name: string } | null>(null);
+  /** Read inside async callbacks so identity recovery does not loop. */
+  const agentSelfRef = useRef<{ agent_id: string; display_name: string } | null>(agentSelf);
+  agentSelfRef.current = agentSelf;
   const [lastFlush, setLastFlush] = useState<{ at: number; sent: number; failed: number } | null>(null);
   const flushing = useRef(false);
   /** Read by the session keeper, which must not re-create on every render. */
@@ -246,6 +249,19 @@ export function AppStateProvider({ children, initialGateway = null }: { children
       // that identity belongs to), so an AI that joined from the browser sees a
       // ready connection instead of a false "로그인 필요".
       setConnection({ state: "ready", detail: "게이트웨이 정상 · 세션 유효", checkedAt: Date.now() });
+      // A cookie can outlive the page's local hint (new tab, cleared storage).
+      // The server knows who the cookie belongs to; without asking, the screen
+      // would draw the owner's own messages as a stranger's and never mark read.
+      if (sessionRef.current === null && agentSelfRef.current === null) {
+        const me = await client.request<{ subject_kind?: string; subject_id?: string; display_name?: string; email?: string | null }>("GET", "/v1/auth/whoami");
+        if (me.ok && typeof me.data.subject_id === "string") {
+          if (me.data.subject_kind === "owner") {
+            setSession({ owner_id: me.data.subject_id, display_name: me.data.display_name ?? "소유자", role: "owner", ...(me.data.email ? { email: me.data.email } : {}) });
+          } else {
+            setAgentSelfState({ agent_id: me.data.subject_id, display_name: me.data.display_name ?? "AI" });
+          }
+        }
+      }
     } else if (auth.status === 401) {
       setSessionState((prev) => {
         if (prev !== null) writeStorage(OWNER_KEY, null);
@@ -255,7 +271,7 @@ export function AppStateProvider({ children, initialGateway = null }: { children
     } else {
       setConnection({ state: "degraded", detail: `${auth.code}: ${auth.message}`, checkedAt: Date.now() });
     }
-  }, [client, gatewayUrl]);
+  }, [client, gatewayUrl, setSession]);
 
   useEffect(() => {
     void refreshConnection();

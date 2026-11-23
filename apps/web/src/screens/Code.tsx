@@ -10,6 +10,7 @@ import type { TreeNode } from "@ai-room/editor/tree";
 import { parseUnifiedDiff } from "@ai-room/message-blocks";
 import { useApp } from "../state/AppState.js";
 import { useResource, relativeTime } from "../api/hooks.js";
+import { newIdempotencyKey } from "../api/client.js";
 import { uploadFile, type UploadProgress } from "../api/upload.js";
 import type { ArtifactDto, BranchDto, FileDto, PullRequestDto } from "../api/types.js";
 import { demoArtifacts, demoBranches, demoDiff, demoFileContent, demoFiles, demoPullRequests, demoTree } from "../demo/fixtures.js";
@@ -146,7 +147,7 @@ export function ReviewScreen({ params }: { params: Record<string, string> }) {
             onAddComment={(anchor, body) => {
               setComments((prev) => [...prev, { id: `c-${prev.length + 1}`, path: anchor.path, side: anchor.side, line: anchor.line, head_sha: review.headSha, author: "owner", body, created_at: new Date().toISOString() }]);
               if (gatewayUrl && !demoMode) {
-                void client.request("POST", `/v1/projects/${encodeURIComponent(projectId)}/git/reviews`, { body: { pr_number: review.number, path: anchor.path, side: anchor.side, line: anchor.line, body, head_sha: review.headSha } });
+                void client.request("POST", `/v1/projects/${encodeURIComponent(projectId)}/git/reviews`, { body: { pr_number: review.number, path: anchor.path, side: anchor.side, line: anchor.line, body, head_sha: review.headSha }, idempotencyKey: newIdempotencyKey("review") });
               }
               setToast("코멘트 추가됨(로컬 표시) — 서버 반영 여부는 응답으로 확인하세요");
             }}
@@ -159,7 +160,7 @@ export function ReviewScreen({ params }: { params: Record<string, string> }) {
               setToast("변경 요청 기록됨");
             }}
             onMerge={(sha) => {
-              if (gatewayUrl && !demoMode) void client.request("POST", `/v1/projects/${encodeURIComponent(projectId)}/git/merge`, { body: { pr_number: review.number, head_sha: sha } });
+              if (gatewayUrl && !demoMode) void client.request("POST", `/v1/projects/${encodeURIComponent(projectId)}/git/merge`, { body: { pr_number: review.number, head_sha: sha }, idempotencyKey: newIdempotencyKey("merge") });
               setToast("병합 요청 전송 — 결과는 PR 상태로 확인됩니다");
             }}
           />
@@ -252,9 +253,9 @@ export function CiScreen({ params }: { params: Record<string, string> }) {
       <CIPanel
         runs={runs}
         canWrite={false}
-        onDispatch={(wf) => void client.request("POST", `/v1/projects/${encodeURIComponent(projectId)}/jobs`, { body: { workflow: wf } })}
+        onDispatch={(wf) => void client.request("POST", `/v1/projects/${encodeURIComponent(projectId)}/jobs`, { body: { workflow: wf }, idempotencyKey: newIdempotencyKey("job") })}
       />
-      <TerminalPanel sessions={sessions} onSubmit={(command) => void client.request("POST", `/v1/projects/${encodeURIComponent(projectId)}/jobs`, { body: { command } })} />
+      <TerminalPanel sessions={sessions} onSubmit={(command) => void client.request("POST", `/v1/projects/${encodeURIComponent(projectId)}/jobs`, { body: { command }, idempotencyKey: newIdempotencyKey("job") })} />
     </div>
   );
 }
@@ -323,7 +324,7 @@ export function ArtifactsScreen({ params }: { params: Record<string, string> }) 
           artifacts={artifacts}
           onVerify={(artifact) => {
             if (gatewayUrl && !demoMode) {
-              void client.request("POST", `/v1/projects/${encodeURIComponent(projectId)}/artifacts/${encodeURIComponent(artifact.artifact_id)}/verify`, { body: { sha256: artifact.sha256 } });
+              void client.request("POST", `/v1/projects/${encodeURIComponent(projectId)}/artifacts/${encodeURIComponent(artifact.artifact_id)}/verify`, { body: { sha256: artifact.sha256 }, idempotencyKey: newIdempotencyKey("verify") });
               setNote("해시 검증 요청 전송 — 결과는 서버 응답으로 갱신됩니다");
             } else {
               setNote("게이트웨이 미연결 — 해시 검증은 서버에서만 수행됩니다");
@@ -331,7 +332,7 @@ export function ArtifactsScreen({ params }: { params: Record<string, string> }) 
           }}
           onDownload={(artifact) => {
             if (gatewayUrl && !demoMode) {
-              void client.request<{ url: string }>("POST", `/v1/projects/${encodeURIComponent(projectId)}/artifacts/${encodeURIComponent(artifact.artifact_id)}/download-intent`, { body: {} }).then((r) => {
+              void client.request<{ url: string }>("POST", `/v1/projects/${encodeURIComponent(projectId)}/artifacts/${encodeURIComponent(artifact.artifact_id)}/download-intent`, { body: {}, idempotencyKey: newIdempotencyKey("download") }).then((r) => {
                 if (r.ok) window.open(r.data.url, "_blank", "noopener,noreferrer");
                 else setNote(`${r.code}: ${r.message}`);
               });

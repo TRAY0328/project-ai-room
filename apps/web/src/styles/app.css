@@ -614,7 +614,36 @@
 .mb-link-blocked-note { color: var(--air-danger); font-size: 10.5px; text-decoration: none; }
 .mb-image-placeholder, .mb-html-removed { border: 1px dashed var(--air-line-strong); border-radius: 8px; padding: 8px 10px; font-size: 11.5px; color: var(--air-text-muted); display: grid; gap: 4px; }
 .mb-image-figure { margin: 0; }
-.mb-image { max-width: 100%; border-radius: 10px; border: 1px solid var(--air-line); }
+/* A chat photo fills the bubble as a thumbnail, never as a file card: one tap
+   opens it full screen. `min-width` keeps a small test image from collapsing
+   into something that reads like text. */
+.mb-image { max-width: 100%; }
+.air-msg-bubble .mb-image .mb-image-figure {
+  position: relative;
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.03);
+}
+/* The picture keeps its own aspect ratio (a phone screenshot stays tall, a
+   landscape shot stays wide) up to a readable size; nothing is cropped. */
+.air-msg-bubble .mb-image .mb-image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(100%, 320px);
+  max-height: 320px;
+  min-width: 0;
+  min-height: 0;
+  object-fit: contain;
+  border: 0;
+  border-radius: 10px;
+  cursor: zoom-in;
+  background: transparent;
+}
+:root[data-theme="dark"] .air-msg-bubble .mb-image .mb-image-figure { background: rgba(255, 255, 255, 0.05); }
 .mb-tombstone { font-size: 11.5px; }
 .mb-file { display: grid; gap: 8px; border: 1px solid var(--air-line); border-radius: 10px; padding: 10px; background: var(--air-surface); }
 .mb-file-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -1617,8 +1646,12 @@
   animation: k-msg-in-left 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: var(--air-msg-delay, 0ms);
   transform-origin: left top;
-  will-change: transform, opacity;
+  /* No blanket `will-change`: one compositor layer per message costs memory and
+     makes a long scroll slower, which is the opposite of what it promises. */
 }
+/* A row lays out and paints inside itself; a new bubble cannot make the rows
+   above it re-layout. */
+.air-msg-slot { contain: layout style; }
 .air-msg:hover { background: none; border-color: transparent; }
 .air-msg[data-mine="true"] {
   grid-template-columns: minmax(0, 1fr);
@@ -1688,6 +1721,18 @@
 }
 .air-msg[data-mine="true"] .air-msg-side { align-items: flex-end; }
 
+/* KakaoTalk's unread number: a small amber count beside the clock, on the
+   outside of my bubble (left) and the inside of a peer's (right). */
+.air-msg-unread {
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #e0a400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  text-shadow: 0 0 6px rgba(246, 192, 0, 0.35);
+}
+:root[data-theme="dark"] .air-msg-unread { color: #ffd543; }
 .air-msg-time {
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
@@ -1753,6 +1798,19 @@
 .air-msg[data-grouped="true"] .air-msg-bubble::before { display: none; }
 .air-msg[data-grouped="true"] .air-msg-bubble { border-top-left-radius: 15px; }
 
+/* A photo bubble is the photo: no padding frame, no tail, no shadow of its own. */
+.air-msg-bubble[data-media="image"] {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 12px;
+  overflow: visible;
+  line-height: 0;
+}
+.air-msg-bubble[data-media="image"]::before { display: none; }
+.air-msg-bubble[data-media="image"] .mb-image .mb-image-figure { min-width: 150px; }
+:root[data-theme="dark"] .air-msg-bubble[data-media="image"] { background: transparent; }
+
 .air-msg[data-mine="true"] .air-msg-bubble {
   background: var(--k-mine);
   color: var(--k-mine-text);
@@ -1766,6 +1824,16 @@
   border-color: transparent transparent transparent var(--k-mine);
 }
 .air-msg[data-mine="true"][data-grouped="true"] .air-msg-bubble { border-top-right-radius: 15px; }
+/* The photo is the bubble in either direction: my yellow frame would only add a
+   border around the picture, and the tail would point at nothing. */
+.air-msg[data-mine="true"] .air-msg-bubble[data-media="image"] {
+  background: transparent;
+  color: var(--air-text);
+  border-radius: 12px;
+  box-shadow: none;
+  padding: 0;
+}
+.air-msg[data-mine="true"] .air-msg-bubble[data-media="image"]::before { display: none; }
 
 .air-msg:hover .air-msg-bubble { box-shadow: 0 4px 14px -8px rgba(16, 26, 36, 0.45); }
 .air-msg-bubble:active { transform: scale(0.97); }
@@ -1869,6 +1937,31 @@
 .air-msg-actions { display: flex; align-items: center; gap: 1px; flex-wrap: wrap; opacity: 1; }
 .air-msg-actions .air-btn { min-height: 24px; padding: 2px 5px; }
 
+/* Quick reactions at the top of the long-press sheet — one tap, no picker. */
+.air-action-reactions {
+  display: flex;
+  gap: 6px;
+  padding: 2px 2px 12px;
+  border-bottom: 1px solid var(--k-line, rgba(0, 0, 0, 0.08));
+  margin-bottom: 6px;
+}
+.air-action-reaction {
+  flex: 1 1 0;
+  height: 44px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 150ms cubic-bezier(0.34, 1.56, 0.64, 1), background 150ms ease;
+}
+.air-action-reaction:hover { transform: translateY(-2px) scale(1.06); background: #fff; }
+.air-action-reaction:active { transform: scale(0.9); }
+.air-action-reaction[data-mine="true"] { border-color: rgba(246, 192, 0, 0.7); background: rgba(255, 236, 168, 0.55); }
+:root[data-theme="dark"] .air-action-reaction { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.1); }
+:root[data-theme="dark"] .air-action-reaction[data-mine="true"] { background: rgba(246, 192, 0, 0.22); }
+
 .air-msg-quick {
   display: inline-flex;
   gap: 1px;
@@ -1912,31 +2005,83 @@
 
 /* --- jump to newest ----------------------------------------------------- */
 
+/* The jump control belongs to the corner above the composer, not to the middle
+   of the conversation: it is a small translucent circle with a count badge, and
+   it never sits on top of a bubble's words or its clock. */
 .air-new-msg {
   position: absolute;
-  left: 50%;
-  bottom: 12px;
+  right: 12px;
+  bottom: 10px;
+  left: auto;
   z-index: 4;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 7px 14px;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
   border-radius: 999px;
-  border: 0;
-  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.82);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  backdrop-filter: blur(12px) saturate(1.4);
+  color: #2b3945;
+  cursor: pointer;
+  box-shadow: 0 8px 20px -12px rgba(16, 26, 36, 0.55);
+  animation: k-bob-in 380ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  transition: transform 170ms cubic-bezier(0.34, 1.56, 0.64, 1), background 170ms ease;
+}
+:root[data-theme="dark"] .air-new-msg { background: rgba(52, 58, 64, 0.86); color: #eef3f7; border-color: rgba(255, 255, 255, 0.14); }
+.air-new-msg:hover { transform: translateY(-2px) scale(1.04); }
+.air-new-msg:active { transform: scale(0.94); }
+.air-new-msg-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #f6c000;
+  color: #3a2c00;
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+}
+
+/* --- photo lightbox ----------------------------------------------------- */
+
+.air-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(8, 12, 16, 0.82);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
-  color: #23303c;
-  font-size: 12px;
-  font-weight: 650;
-  cursor: pointer;
-  box-shadow: 0 12px 28px -16px rgba(16, 26, 36, 0.6);
-  animation: k-bob-in 460ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  transition: transform 170ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 170ms ease;
+  animation: k-fade-up 180ms ease both;
 }
-:root[data-theme="dark"] .air-new-msg { background: #3a3a3a; color: #fff; }
-.air-new-msg:hover { transform: translate(-50%, -2px) scale(1.03); }
-.air-new-msg:active { transform: translate(-50%, 0) scale(0.96); }
+.air-lightbox-figure { margin: 0; display: grid; gap: 10px; justify-items: center; max-width: min(92vw, 720px); }
+.air-lightbox-figure img { max-width: 100%; max-height: 78vh; border-radius: 14px; box-shadow: 0 30px 70px -30px #000; }
+.air-lightbox-figure figcaption { color: rgba(255, 255, 255, 0.78); font-size: 12px; text-align: center; }
+.air-lightbox-close {
+  position: absolute;
+  top: calc(14px + env(safe-area-inset-top));
+  right: 14px;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  cursor: pointer;
+}
 
 /* --- composer ----------------------------------------------------------- */
 
@@ -3001,7 +3146,10 @@
   .air-sheet[data-side="bottom"] { width: 100%; border-radius: 20px 20px 0 0; }
   /* A thumb opens the toolbar by tapping the bubble (no hover on a phone); it
      stays one row so it moves the conversation as little as possible. */
-  .air-msg-tools { flex-wrap: nowrap; max-width: calc(100vw - 72px); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+  /* Touch has no hover, and a toolbar that appears under a thumb only moves the
+     conversation: a tap opens the action sheet, which carries the quick
+     reactions at its top. The hover row stays for a mouse. */
+  .air-msg .air-msg-tools { display: none !important; }
   .air-msg-tools::-webkit-scrollbar { display: none; }
   .air-msg-tools .air-msg-actions { flex-wrap: nowrap; flex: 0 0 auto; }
 }
