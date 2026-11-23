@@ -165,6 +165,7 @@
 | `apps/web` `vitest run` | **160/160 pass** (신규 read-state 6 · upload-idempotency 1 · message-merge 6 포함) |
 | `npx wrangler d1 migrations apply ai-room-db --remote` | `0004_room_read_state.sql` ✅ |
 | `npx wrangler deploy` | 최종 버전 `8caae5b5-3d54-485f-8c50-1e2fcb570aa6` |
+| GitHub `main` 푸시 + Actions | `e8c0fc7` — verify·build-web·build-android·security success, build-windows 진행 |
 
 E2E 중 실수로 **사용자가 15:30에 올린 메시지(seq 201, `897.png`)를 정리 대상으로 오인해 삭제**했다.
 즉시 D1에서 `deleted_at` 해제·tombstone 제거·FTS 재색인으로 원상 복구했고, 이후 정리는 "이번 실행이
